@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A/B Testing Dashboard - Graph RAG System</title>
+    <style>
+        :root {
+            --primary-color: #0078d4;
+            --secondary-color: #f5f5f5;
+            --success-color: #4caf50;
+            --warning-color: #ff9800;
+            --danger-color: #f44336;
+            --border-color: #ddd;
+            --text-color: #333;
+            --light-text: #666;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            color: var(--text-color);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: linear-gradient(135deg, var(--primary-color) 0%, #005a9e 100%);
+            color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        }
+        
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        
+        .nav-tabs {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 30px;
+            gap: 10px;
+        }
+        
+        .nav-tab {
+            padding: 12px 24px;
+            background: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            text-decoration: none;
+            color: var(--text-color);
+            font-weight: 500;
+            transition: all 0.3s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .nav-tab:hover {
+            background: var(--primary-color);
+            color: white;
+            transform: translateY(-2px);
+        }
+        
+        .nav-tab.active {
+            background: var(--primary-color);
+            color: white;
+        }
+        
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            transition: transform 0.3s;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .card h3 {
+            margin-bottom: 15px;
+            color: var(--primary-color);
+            font-size: 1.3rem;
+        }
+        
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .stat-label {
+            color: var(--light-text);
+            font-size: 0.9rem;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+        
+        .status-ready {
+            background: rgba(76, 175, 80, 0.1);
+            color: var(--success-color);
+        }
+        
+        .status-running {
+            background: rgba(255, 152, 0, 0.1);
+            color: var(--warning-color);
+        }
+        
+        .status-error {
+            background: rgba(244, 67, 54, 0.1);
+            color: var(--danger-color);
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 500;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+            margin: 5px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-color) 0%, #005a9e 100%);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 120, 212, 0.4);
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, var(--success-color) 0%, #45a049 100%);
+            color: white;
+        }
+        
+        .btn-warning {
+            background: linear-gradient(135deg, var(--warning-color) 0%, #f57c00 100%);
+            color: white;
+        }
+        
+        .quick-actions {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .recent-activity {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        
+        .activity-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .activity-item:last-child {
+            border-bottom: none;
+        }
+        
+        .activity-time {
+            color: var(--light-text);
+            font-size: 0.9rem;
+        }
+        
+        .loader {
+            border: 3px solid rgba(0,120,212,0.2);
+            border-top: 3px solid var(--primary-color);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .alert-success {
+            background: rgba(76, 175, 80, 0.1);
+            color: var(--success-color);
+            border: 1px solid rgba(76, 175, 80, 0.3);
+        }
+        
+        .alert-error {
+            background: rgba(244, 67, 54, 0.1);
+            color: var(--danger-color);
+            border: 1px solid rgba(244, 67, 54, 0.3);
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        
+        .modal-content {
+            background-color: white;
+            margin: 15% auto;
+            padding: 20px;
+            border-radius: 12px;
+            width: 80%;
+            max-width: 500px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+        
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .close:hover {
+            color: black;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 500;
+        }
+        
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧪 A/B Testing Dashboard</h1>
+            <p>Graph RAG System Performance Testing & Analysis</p>
+        </div>
+        
+        <div class="nav-tabs">
+            <a href="/" class="nav-tab active">📊 Dashboard</a>
+            <a href="/configurations" class="nav-tab">⚙️ Configurations</a>
+            <a href="/executions" class="nav-tab">🏃 Executions</a>
+            <a href="/results" class="nav-tab">📈 Results</a>
+        </div>
+        
+        <div id="alert-container"></div>
+        
+        <div class="dashboard-grid">
+            <div class="card">
+                <h3>System Status</h3>
+                <div id="system-status">
+                    <div class="loader"></div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <h3>Total Configurations</h3>
+                <div class="stat-value" id="total-configs">-</div>
+                <div class="stat-label">Test configurations available</div>
+            </div>
+            
+            <div class="card">
+                <h3>Active Tests</h3>
+                <div class="stat-value" id="active-tests">-</div>
+                <div class="stat-label">Currently running</div>
+            </div>
+            
+            <div class="card">
+                <h3>Recent Executions</h3>
+                <div class="stat-value" id="recent-executions">-</div>
+                <div class="stat-label">In the last 24 hours</div>
+            </div>
+        </div>
+        
+        <div class="quick-actions">
+            <h3>Quick Actions</h3>
+            <button class="btn btn-primary" onclick="runQuickTest()">🎲 Run Quick Test</button>
+            <button class="btn btn-success" onclick="generateConfigs()">📋 Generate Default Configs</button>
+            <button class="btn btn-warning" onclick="openCleanupModal()">🧹 Cleanup Old Tests</button>
+            <a href="/configurations" class="btn btn-primary">⚙️ Manage Configurations</a>
+            <a href="/executions" class="btn btn-primary">🏃 View Executions</a>
+        </div>
+        
+        <div class="recent-activity">
+            <h3>Recent Activity</h3>
+            <div id="recent-activity-list">
+                <div class="loader"></div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Quick Test Results Modal -->
+    <div id="quickTestModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Quick Test Results</h3>
+            <div id="quickTestResults"></div>
+        </div>
+    </div>
+    
+    <!-- Cleanup Modal -->
+    <div id="cleanupModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Cleanup Old Test Executions</h3>
+            <div class="form-group">
+                <label for="daysOld">Delete executions older than:</label>
+                <select id="daysOld">
+                    <option value="7">7 days</option>
+                    <option value="14">14 days</option>
+                    <option value="30" selected>30 days</option>
+                    <option value="60">60 days</option>
+                </select>
+            </div>
+            <button class="btn btn-warning" onclick="performCleanup()">🧹 Cleanup</button>
+            <button class="btn" onclick="closeModal('cleanupModal')">Cancel</button>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let systemStatus = null;
+        
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            loadSystemStatus();
+            loadRecentActivity();
+            
+            // Refresh data every 30 seconds
+            setInterval(loadSystemStatus, 30000);
+            setInterval(loadRecentActivity, 60000);
+            
+            // Setup modal events
+            setupModals();
+        });
+        
+        function setupModals() {
+            // Close modals when clicking the X
+            document.querySelectorAll('.close').forEach(closeBtn => {
+                closeBtn.onclick = function() {
+                    this.closest('.modal').style.display = 'none';
+                }
+            });
+            
+            // Close modals when clicking outside
+            window.onclick = function(event) {
+                if (event.target.classList.contains('modal')) {
+                    event.target.style.display = 'none';
+                }
+            }
+        }
+        
+        async function loadSystemStatus() {
+            try {
+                const response = await fetch('/api/status');
+                const data = await response.json();
+                
+                systemStatus = data;
+                
+                // Update system status
+                const statusElement = document.getElementById('system-status');
+                if (data.system_ready) {
+                    statusElement.innerHTML = `
+                        <div class="status-indicator status-ready">✅ System Ready</div>
+                        <div class="stat-label">Connected to: ${data.main_app_url}</div>
+                    `;
+                } else {
+                    statusElement.innerHTML = `
+                        <div class="status-indicator status-error">❌ System Error</div>
+                        <div class="stat-label">Check main application</div>
+                    `;
+                }
+                
+                // Update stats
+                document.getElementById('total-configs').textContent = data.total_configurations || '0';
+                document.getElementById('active-tests').textContent = data.active_tests || '0';
+                document.getElementById('recent-executions').textContent = data.recent_executions || '0';
+                
+            } catch (error) {
+                console.error('Error loading system status:', error);
+                showAlert('Error loading system status: ' + error.message, 'error');
+                
+                const statusElement = document.getElementById('system-status');
+                statusElement.innerHTML = `
+                    <div class="status-indicator status-error">❌ Connection Error</div>
+                    <div class="stat-label">Unable to connect to server</div>
+                `;
+            }
+        }
+        
+        async function loadRecentActivity() {
+            try {
+                const response = await fetch('/api/executions?limit=5');
+                const data = await response.json();
+                
+                const activityList = document.getElementById('recent-activity-list');
+                
+                if (data.executions && data.executions.length > 0) {
+                    activityList.innerHTML = data.executions.map(execution => {
+                        const statusClass = execution.status === 'completed' ? 'status-ready' : 
+                                          execution.status === 'running' ? 'status-running' : 
+                                          'status-error';
+                        
+                        const timeStr = execution.start_time ? 
+                            new Date(execution.start_time).toLocaleString() : 'Unknown';
+                        
+                        return `
+                            <div class="activity-item">
+                                <div>
+                                    <strong>${execution.config_name}</strong>
+                                    <div class="status-indicator ${statusClass}">${execution.status}</div>
+                                </div>
+                                <div class="activity-time">${timeStr}</div>
+                            </div>
+                        `;
+                    }).join('');
+                } else {
+                    activityList.innerHTML = '<div class="activity-item">No recent activity</div>';
+                }
+                
+            } catch (error) {
+                console.error('Error loading recent activity:', error);
+                document.getElementById('recent-activity-list').innerHTML = 
+                    '<div class="activity-item">Error loading activity</div>';
+            }
+        }
+        
+        async function runQuickTest() {
+            const button = event.target;
+            const originalText = button.textContent;
+            
+            try {
+                button.textContent = '🎲 Running Test...';
+                button.disabled = true;
+                
+                const response = await fetch('/api/quick-test', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    showQuickTestResults(data);
+                    showAlert('Quick test completed successfully!', 'success');
+                } else {
+                    showAlert('Quick test failed: ' + data.error, 'error');
+                }
+                
+            } catch (error) {
+                console.error('Error running quick test:', error);
+                showAlert('Error running quick test: ' + error.message, 'error');
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        function showQuickTestResults(data) {
+            const combo = data.test_combination;
+            const results = data.results[0]; // First result
+            const summary = data.summary;
+            
+            const resultsHtml = `
+                <div class="form-group">
+                    <strong>Test Configuration:</strong>
+                    <ul>
+                        <li>Model: ${combo.model_name}</li>
+                        <li>User Type: ${combo.user_type}</li>
+                        <li>Think Mode: ${combo.think_mode ? 'Enabled' : 'Disabled'}</li>
+                        <li>Question: ${combo.question}</li>
+                    </ul>
+                </div>
+                
+                <div class="form-group">
+                    <strong>Results:</strong>
+                    <ul>
+                        <li>Success: ${results.success ? '✅ Yes' : '❌ No'}</li>
+                        <li>Response Time: ${results.response_time.toFixed(2)}s</li>
+                        ${results.error ? `<li>Error: ${results.error}</li>` : ''}
+                    </ul>
+                </div>
+                
+                <div class="form-group">
+                    <strong>Summary:</strong>
+                    <ul>
+                        <li>Success Rate: ${summary.success_rate.toFixed(1)}%</li>
+                        <li>Average Response Time: ${summary.average_response_time.toFixed(2)}s</li>
+                    </ul>
+                </div>
+            `;
+            
+            document.getElementById('quickTestResults').innerHTML = resultsHtml;
+            document.getElementById('quickTestModal').style.display = 'block';
+        }
+        
+        async function generateConfigs() {
+            const button = event.target;
+            const originalText = button.textContent;
+            
+            try {
+                button.textContent = '📋 Generating...';
+                button.disabled = true;
+                
+                const response = await fetch('/api/generate-configs', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    showAlert(`Generated ${data.files.length} default configurations successfully!`, 'success');
+                    loadSystemStatus(); // Refresh stats
+                } else {
+                    showAlert('Failed to generate configs: ' + data.error, 'error');
+                }
+                
+            } catch (error) {
+                console.error('Error generating configs:', error);
+                showAlert('Error generating configs: ' + error.message, 'error');
+            } finally {
+                button.textContent = originalText;
+                button.disabled = false;
+            }
+        }
+        
+        function openCleanupModal() {
+            document.getElementById('cleanupModal').style.display = 'block';
+        }
+        
+        async function performCleanup() {
+            const daysOld = document.getElementById('daysOld').value;
+            
+            try {
+                const response = await fetch('/api/cleanup', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ days_old: parseInt(daysOld) })
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    showAlert(`Cleaned up ${data.cleaned_count} old executions`, 'success');
+                    closeModal('cleanupModal');
+                    loadSystemStatus(); // Refresh stats
+                    loadRecentActivity(); // Refresh activity
+                } else {
+                    showAlert('Cleanup failed: ' + data.error, 'error');
+                }
+                
+            } catch (error) {
+                console.error('Error during cleanup:', error);
+                showAlert('Error during cleanup: ' + error.message, 'error');
+            }
+        }
+        
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+        
+        function showAlert(message, type = 'success') {
+            const alertContainer = document.getElementById('alert-container');
+            const alertClass = type === 'success' ? 'alert-success' : 'alert-error';
+            
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert ${alertClass}`;
+            alertDiv.textContent = message;
+            
+            alertContainer.appendChild(alertDiv);
+            
+            // Remove alert after 5 seconds
+            setTimeout(() => {
+                alertDiv.remove();
+            }, 5000);
+        }
+    </script>
+</body>
+</html> 

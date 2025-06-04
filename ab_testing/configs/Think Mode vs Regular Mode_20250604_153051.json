@@ -1,0 +1,41 @@
+{
+  "name": "Think Mode vs Regular Mode",
+  "description": "Compare performance with think mode on vs off for Gemini 2.5 models",
+  "created_at": "2025-06-04T15:30:51.491301",
+  "test_duration_minutes": 60,
+  "questions_per_test": 10,
+  "delay_between_questions": 5,
+  "randomize_order": true,
+  "collect_metrics": true,
+  "save_responses": true,
+  "test_type": "think_mode_comparison",
+  "models_to_test": [
+    "gemini-2.5-pro-preview-05-06",
+    "gemini-2.5-flash-preview-05-20"
+  ],
+  "user_type": "technical",
+  "think_mode_options": [
+    true,
+    false
+  ],
+  "questions": [
+    "How to identify subrogation Claim?",
+    "Explain External Stop Loss reporting requirements",
+    "How does Neo4j integration improve search results?",
+    "How does the system handle older MS Office formats?",
+    "How to identify indemnity Claim?",
+    "How to identify in-house/340b Claim?",
+    "How does the graph database enhance document processing?",
+    "Present on Admission Code",
+    "How to identify supplies Claim?",
+    "How does iterative extraction work?",
+    "How does error handling work?",
+    "Explain Aexcel Designated Provider Specialty"
+  ],
+  "metrics": [
+    "response_time",
+    "response_quality",
+    "accuracy",
+    "completeness"
+  ]
+}

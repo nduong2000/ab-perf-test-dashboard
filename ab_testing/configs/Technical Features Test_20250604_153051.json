@@ -1,0 +1,38 @@
+{
+  "name": "Technical Features Test",
+  "description": "Test performance on technical_features questions",
+  "created_at": "2025-06-04T15:30:51.491935",
+  "test_duration_minutes": 60,
+  "questions_per_test": 10,
+  "delay_between_questions": 5,
+  "randomize_order": true,
+  "collect_metrics": true,
+  "save_responses": true,
+  "test_type": "category_specific",
+  "category": "technical_features",
+  "models_to_test": [
+    "gemini-2.5-pro-preview-05-06",
+    "gemini-2.5-flash-preview-05-20",
+    "gemini-2.0-flash-exp"
+  ],
+  "user_types": [
+    "business",
+    "technical"
+  ],
+  "think_mode_options": [
+    false
+  ],
+  "questions": [
+    "How does the graph database enhance document processing?",
+    "What are the key features of Graph RAG v3.0?",
+    "How does Neo4j integration improve search results?",
+    "How does iterative extraction work?",
+    "What is the relationship between entities in the graph?",
+    "What is the graph schema flexibility?"
+  ],
+  "metrics": [
+    "category_relevance",
+    "accuracy",
+    "completeness"
+  ]
+}

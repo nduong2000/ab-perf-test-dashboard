@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Results - A/B Testing Dashboard</title>
+    <style>
+        :root {
+            --primary-color: #0078d4;
+            --secondary-color: #f5f5f5;
+            --success-color: #4caf50;
+            --warning-color: #ff9800;
+            --danger-color: #f44336;
+            --border-color: #ddd;
+            --text-color: #333;
+            --light-text: #666;
+        }
+        
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            color: var(--text-color);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 20px;
+            background: linear-gradient(135deg, var(--primary-color) 0%, #005a9e 100%);
+            color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        }
+        
+        .nav-tabs {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 30px;
+            gap: 10px;
+        }
+        
+        .nav-tab {
+            padding: 12px 24px;
+            background: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            text-decoration: none;
+            color: var(--text-color);
+            font-weight: 500;
+            transition: all 0.3s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .nav-tab:hover {
+            background: var(--primary-color);
+            color: white;
+            transform: translateY(-2px);
+        }
+        
+        .nav-tab.active {
+            background: var(--primary-color);
+            color: white;
+        }
+        
+        .actions-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 500;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.3s;
+            margin: 2px;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-color) 0%, #005a9e 100%);
+            color: white;
+        }
+        
+        .btn-success {
+            background: linear-gradient(135deg, var(--success-color) 0%, #45a049 100%);
+            color: white;
+        }
+        
+        .results-selector {
+            margin-bottom: 20px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .results-selector select {
+            width: 100%;
+            max-width: 400px;
+            padding: 10px;
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            font-size: 1rem;
+        }
+        
+        .results-content {
+            display: grid;
+            gap: 20px;
+        }
+        
+        .results-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        
+        .results-card h3 {
+            margin-bottom: 15px;
+            color: var(--primary-color);
+            border-bottom: 2px solid var(--secondary-color);
+            padding-bottom: 10px;
+        }
+        
+        .summary-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            text-align: center;
+            padding: 15px;
+            background: var(--secondary-color);
+            border-radius: 8px;
+        }
+        
+        .stat-value {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            color: var(--light-text);
+            margin-top: 5px;
+        }
+        
+        .recommendations {
+            background: linear-gradient(135deg, #e8f5e8 0%, #ffffff 100%);
+            border-left: 4px solid var(--success-color);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .recommendations h4 {
+            color: var(--success-color);
+            margin-bottom: 10px;
+        }
+        
+        .recommendations ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        
+        .recommendations li {
+            padding: 5px 0;
+            border-bottom: 1px solid rgba(0,0,0,0.1);
+        }
+        
+        .recommendations li:last-child {
+            border-bottom: none;
+        }
+        
+        .model-comparison {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+        }
+        
+        .model-card {
+            padding: 15px;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            background: var(--secondary-color);
+        }
+        
+        .model-name {
+            font-weight: 600;
+            color: var(--primary-color);
+            margin-bottom: 10px;
+        }
+        
+        .model-stats {
+            font-size: 0.9rem;
+        }
+        
+        .model-stats div {
+            margin: 5px 0;
+        }
+        
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+        
+        .alert-success {
+            background: rgba(76, 175, 80, 0.1);
+            color: var(--success-color);
+            border: 1px solid rgba(76, 175, 80, 0.3);
+        }
+        
+        .alert-error {
+            background: rgba(244, 67, 54, 0.1);
+            color: var(--danger-color);
+            border: 1px solid rgba(244, 67, 54, 0.3);
+        }
+        
+        .loader {
+            border: 3px solid rgba(0,120,212,0.2);
+            border-top: 3px solid var(--primary-color);
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        
+        .empty-state h3 {
+            margin-bottom: 10px;
+            color: var(--light-text);
+        }
+        
+        .raw-data {
+            background: #f8f9fa;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .raw-data pre {
+            margin: 0;
+            font-size: 0.8rem;
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📈 Test Results</h1>
+            <p>Analyze and compare A/B test results</p>
+        </div>
+        
+        <div class="nav-tabs">
+            <a href="/" class="nav-tab">📊 Dashboard</a>
+            <a href="/configurations" class="nav-tab">⚙️ Configurations</a>
+            <a href="/executions" class="nav-tab">🏃 Executions</a>
+            <a href="/results" class="nav-tab active">📈 Results</a>
+        </div>
+        
+        <div id="alert-container"></div>
+        
+        <div class="actions-bar">
+            <h3>Test Results Analysis</h3>
+            <div>
+                <button class="btn btn-primary" onclick="loadCompletedExecutions()">🔄 Refresh</button>
+                <a href="/executions" class="btn btn-success">🏃 View Executions</a>
+            </div>
+        </div>
+        
+        <div class="results-selector">
+            <label for="executionSelect"><strong>Select Test Execution:</strong></label>
+            <select id="executionSelect" onchange="loadResults()">
+                <option value="">Loading executions...</option>
+            </select>
+        </div>
+        
+        <div id="results-container">
+            <div class="empty-state">
+                <h3>Select a completed test execution</h3>
+                <p>Choose from the dropdown above to view detailed results and analysis.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let completedExecutions = [];
+        let currentResults = null;
+        let currentAnalysis = null;
+        
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', function() {
+            loadCompletedExecutions();
+            
+            // Check if specific execution ID in URL params
+            const urlParams = new URLSearchParams(window.location.search);
+            const executionId = urlParams.get('execution_id');
+            if (executionId) {
+                setTimeout(() => {
+                    document.getElementById('executionSelect').value = executionId;
+                    loadResults();
+                }, 1000);
+            }
+        });
+        
+        async function loadCompletedExecutions() {
+            try {
+                const response = await fetch('/api/executions?limit=50');
+                const data = await response.json();
+                
+                // Filter for completed executions
+                completedExecutions = (data.executions || []).filter(exec => 
+                    exec.status === 'completed' && exec.results_file
+                );
+                
+                updateExecutionSelect();
+                
+            } catch (error) {
+                console.error('Error loading executions:', error);
+                showAlert('Error loading executions: ' + error.message, 'error');
+            }
+        }
+        
+        function updateExecutionSelect() {
+            const select = document.getElementById('executionSelect');
+            
+            if (completedExecutions.length === 0) {
+                select.innerHTML = '<option value="">No completed executions found</option>';
+                return;
+            }
+            
+            select.innerHTML = '<option value="">Select an execution...</option>' +
+                completedExecutions.map(exec => 
+                    `<option value="${exec.execution_id}">${exec.config_name} - ${new Date(exec.start_time).toLocaleString()}</option>`
+                ).join('');
+        }
+        
+        async function loadResults() {
+            const executionId = document.getElementById('executionSelect').value;
+            
+            if (!executionId) {
+                document.getElementById('results-container').innerHTML = `
+                    <div class="empty-state">
+                        <h3>Select a completed test execution</h3>
+                        <p>Choose from the dropdown above to view detailed results and analysis.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Show loading
+            document.getElementById('results-container').innerHTML = '<div class="loader"></div>';
+            
+            try {
+                // Load both results and analysis in parallel
+                const [resultsResponse, analysisResponse] = await Promise.all([
+                    fetch(`/api/executions/${executionId}/results`),
+                    fetch(`/api/executions/${executionId}/analysis`)
+                ]);
+                
+                if (resultsResponse.ok) {
+                    const resultsData = await resultsResponse.json();
+                    currentResults = resultsData.results;
+                } else {
+                    currentResults = null;
+                }
+                
+                if (analysisResponse.ok) {
+                    const analysisData = await analysisResponse.json();
+                    currentAnalysis = analysisData.analysis;
+                } else {
+                    currentAnalysis = null;
+                }
+                
+                renderResults();
+                
+            } catch (error) {
+                console.error('Error loading results:', error);
+                showAlert('Error loading results: ' + error.message, 'error');
+                document.getElementById('results-container').innerHTML = `
+                    <div class="empty-state">
+                        <h3>Error loading results</h3>
+                        <p>Unable to load results for this execution.</p>
+                    </div>
+                `;
+            }
+        }
+        
+        function renderResults() {
+            const container = document.getElementById('results-container');
+            
+            if (!currentResults && !currentAnalysis) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <h3>No results available</h3>
+                        <p>Results are not yet available for this execution.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = '<div class="results-content">';
+            
+            // Render analysis if available
+            if (currentAnalysis) {
+                html += renderAnalysis(currentAnalysis);
+            }
+            
+            // Render raw results if available
+            if (currentResults) {
+                html += renderRawResults(currentResults);
+            }
+            
+            html += '</div>';
+            container.innerHTML = html;
+        }
+        
+        function renderAnalysis(analysis) {
+            let html = `
+                <div class="results-card">
+                    <h3>📊 Test Analysis Summary</h3>
+                    
+                    <div class="summary-stats">
+                        <div class="stat-card">
+                            <div class="stat-value">${analysis.total_tests}</div>
+                            <div class="stat-label">Total Tests</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${analysis.successful_tests}</div>
+                            <div class="stat-label">Successful</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${analysis.success_rate.toFixed(1)}%</div>
+                            <div class="stat-label">Success Rate</div>
+                        </div>
+                    </div>
+            `;
+            
+            // Add recommendations if available
+            if (analysis.recommendations && analysis.recommendations.length > 0) {
+                html += `
+                    <div class="recommendations">
+                        <h4>🎯 Recommendations</h4>
+                        <ul>
+                            ${analysis.recommendations.map(rec => `<li>${rec}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+            
+            html += '</div>';
+            
+            // Model comparison
+            if (analysis.by_model && Object.keys(analysis.by_model).length > 0) {
+                html += `
+                    <div class="results-card">
+                        <h3>🤖 Model Performance Comparison</h3>
+                        <div class="model-comparison">
+                            ${Object.entries(analysis.by_model).map(([model, stats]) => `
+                                <div class="model-card">
+                                    <div class="model-name">${model}</div>
+                                    <div class="model-stats">
+                                        <div><strong>Avg Response Time:</strong> ${stats.avg.toFixed(2)}s</div>
+                                        <div><strong>Min:</strong> ${stats.min.toFixed(2)}s</div>
+                                        <div><strong>Max:</strong> ${stats.max.toFixed(2)}s</div>
+                                        <div><strong>Tests:</strong> ${stats.count}</div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // User type comparison
+            if (analysis.by_user_type && Object.keys(analysis.by_user_type).length > 1) {
+                html += `
+                    <div class="results-card">
+                        <h3>👤 User Type Performance</h3>
+                        <div class="model-comparison">
+                            ${Object.entries(analysis.by_user_type).map(([userType, stats]) => `
+                                <div class="model-card">
+                                    <div class="model-name">${userType}</div>
+                                    <div class="model-stats">
+                                        <div><strong>Avg Response Time:</strong> ${stats.avg.toFixed(2)}s</div>
+                                        <div><strong>Tests:</strong> ${stats.count}</div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Think mode comparison
+            if (analysis.by_think_mode && Object.keys(analysis.by_think_mode).length > 1) {
+                html += `
+                    <div class="results-card">
+                        <h3>🧠 Think Mode Performance</h3>
+                        <div class="model-comparison">
+                            ${Object.entries(analysis.by_think_mode).map(([thinkMode, stats]) => `
+                                <div class="model-card">
+                                    <div class="model-name">Think Mode ${thinkMode}</div>
+                                    <div class="model-stats">
+                                        <div><strong>Avg Response Time:</strong> ${stats.avg.toFixed(2)}s</div>
+                                        <div><strong>Tests:</strong> ${stats.count}</div>
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+            
+            return html;
+        }
+        
+        function renderRawResults(results) {
+            const testRunInfo = results.test_run_info || {};
+            const testResults = results.results || [];
+            
+            return `
+                <div class="results-card">
+                    <h3>📋 Raw Test Results</h3>
+                    
+                    <div class="summary-stats">
+                        <div class="stat-card">
+                            <div class="stat-value">${testRunInfo.total_tests || 0}</div>
+                            <div class="stat-label">Total Tests</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${testRunInfo.successful_tests || 0}</div>
+                            <div class="stat-label">Successful</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${testRunInfo.failed_tests || 0}</div>
+                            <div class="stat-label">Failed</div>
+                        </div>
+                    </div>
+                    
+                    <div class="raw-data">
+                        <h4>Sample Test Results (First 5):</h4>
+                        <pre>${JSON.stringify(testResults.slice(0, 5), null, 2)}</pre>
+                    </div>
+                    
+                    <div style="margin-top: 15px;">
+                        <button class="btn btn-primary" onclick="downloadCurrentResults()">📥 Download Full Results</button>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function downloadCurrentResults() {
+            const executionId = document.getElementById('executionSelect').value;
+            if (executionId) {
+                window.open(`/api/download/results/${executionId}`, '_blank');
+            }
+        }
+        
+        function showAlert(message, type = 'success') {
+            const alertContainer = document.getElementById('alert-container');
+            const alertClass = type === 'success' ? 'alert-success' : 'alert-error';
+            
+            const alertDiv = document.createElement('div');
+            alertDiv.className = `alert ${alertClass}`;
+            alertDiv.textContent = message;
+            
+            alertContainer.appendChild(alertDiv);
+            
+            // Remove alert after 5 seconds
+            setTimeout(() => {
+                alertDiv.remove();
+            }, 5000);
+        }
+    </script>
+</body>
+</html> 
