@@ -53,7 +53,6 @@ jobs:
           image: ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE }}/${{ env.SERVICE }}:${{ github.sha }}
           env_vars: |
             FLASK_ENV=production
-            PORT=8080
             GRAPH_RAG_BASE_URL=https://aetraggraph-529012124872.us-central1.run.app
             AB_TEST_TIMEOUT=60
             AB_TEST_DEFAULT_DELAY=2

@@ -72,7 +72,7 @@ gcloud run deploy ab-perf-test-dashboard \
   --port=8080 \
   --memory=512Mi \
   --cpu=1 \
-  --set-env-vars=FLASK_ENV=production,PORT=8080,GRAPH_RAG_BASE_URL=https://aetraggraph-529012124872.us-central1.run.app
+  --set-env-vars=FLASK_ENV=production,GRAPH_RAG_BASE_URL=https://aetraggraph-529012124872.us-central1.run.app
 ```
 
 ## Environment Variables
@@ -80,7 +80,6 @@ gcloud run deploy ab-perf-test-dashboard \
 The following environment variables are automatically set during deployment:
 
 - `FLASK_ENV=production`
-- `PORT=8080`
 - `GRAPH_RAG_BASE_URL=https://aetraggraph-529012124872.us-central1.run.app`
 - `AB_TEST_TIMEOUT=60`
 - `AB_TEST_DEFAULT_DELAY=2`
@@ -89,6 +88,8 @@ The following environment variables are automatically set during deployment:
 - `AB_TEST_CONFIG_DIR=ab_testing/configs`
 - `AB_TEST_RESULTS_DIR=ab_testing/results`
 - `LOG_LEVEL=INFO`
+
+**Note**: `PORT=8080` is automatically set by Cloud Run and should not be included in environment variables.
 
 ## Accessing Your Application
 
@@ -112,6 +113,7 @@ The exact URL will be shown in the GitHub Actions output or you can find it in t
 1. **Permission Denied**: Make sure your service account has the correct permissions
 2. **Build Fails**: Check if all dependencies are in `requirements.txt`
 3. **Container Won't Start**: Check the logs for startup errors
+4. **PORT Environment Variable Error**: Don't include `PORT` in env vars - it's automatically set by Cloud Run
 
 ### Useful Commands
 
