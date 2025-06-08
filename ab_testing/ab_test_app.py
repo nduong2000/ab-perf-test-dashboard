@@ -431,6 +431,122 @@ def api_cleanup():
         logger.error(f"Error during cleanup: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+# Cloud Tasks Webhook Endpoints
+
+@app.route('/api/tasks/execute-ab-test', methods=['POST'])
+def api_cloud_task_execute_test():
+    """Cloud Tasks webhook endpoint for executing A/B tests."""
+    try:
+        # Verify this is a Cloud Tasks request
+        task_name = request.headers.get('X-CloudTasks-TaskName', '')
+        queue_name = request.headers.get('X-CloudTasks-QueueName', '')
+        
+        if not task_name or not queue_name:
+            logger.warning("Unauthorized Cloud Task execution attempt")
+            return jsonify({"error": "Unauthorized"}), 401
+        
+        if not test_manager:
+            return jsonify({"error": "Test manager not initialized"}), 500
+        
+        data = request.json
+        execution_id = data.get('execution_id')
+        config_name = data.get('config_name')
+        
+        if not execution_id or not config_name:
+            return jsonify({"error": "execution_id and config_name are required"}), 400
+        
+        logger.info(f"⚡ Cloud Task executing A/B test: {execution_id}")
+        
+        # Execute the test via the test manager
+        success = test_manager.execute_test_via_cloud_task(execution_id, config_name)
+        
+        if success:
+            return jsonify({
+                "status": "success",
+                "message": f"Test execution completed: {execution_id}",
+                "execution_id": execution_id
+            })
+        else:
+            return jsonify({
+                "status": "error",
+                "message": f"Test execution failed: {execution_id}",
+                "execution_id": execution_id
+            }), 500
+        
+    except Exception as e:
+        logger.error(f"Error in Cloud Task execution: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/tasks/cleanup', methods=['POST'])
+def api_cloud_task_cleanup():
+    """Cloud Tasks webhook endpoint for cleanup operations."""
+    try:
+        # Verify this is a Cloud Tasks request
+        task_name = request.headers.get('X-CloudTasks-TaskName', '')
+        queue_name = request.headers.get('X-CloudTasks-QueueName', '')
+        
+        if not task_name or not queue_name:
+            logger.warning("Unauthorized Cloud Task cleanup attempt")
+            return jsonify({"error": "Unauthorized"}), 401
+        
+        if not test_manager:
+            return jsonify({"error": "Test manager not initialized"}), 500
+        
+        data = request.json
+        days_old = data.get('days_old', 30)
+        
+        logger.info(f"🧹 Cloud Task executing cleanup: {days_old} days old")
+        
+        cleaned_count = test_manager.cleanup_old_executions(days_old=days_old)
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Cleanup completed: {cleaned_count} items",
+            "cleaned_count": cleaned_count
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in Cloud Task cleanup: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/tasks/status')
+def api_cloud_tasks_status():
+    """Get Cloud Tasks status and queue information."""
+    try:
+        if not test_manager:
+            return jsonify({"error": "Test manager not initialized"}), 500
+        
+        # Check if Cloud Tasks is enabled
+        use_cloud_tasks = os.getenv('USE_CLOUD_TASKS', '').lower() == 'true'
+        
+        if not use_cloud_tasks:
+            return jsonify({
+                "cloud_tasks_enabled": False,
+                "message": "Cloud Tasks is not enabled"
+            })
+        
+        if hasattr(test_manager, 'cloud_tasks_manager'):
+            # Get basic queue information
+            tasks = test_manager.cloud_tasks_manager.list_tasks(page_size=10)
+            
+            return jsonify({
+                "cloud_tasks_enabled": True,
+                "queue_name": test_manager.cloud_tasks_manager.queue_name,
+                "project_id": test_manager.cloud_tasks_manager.project_id,
+                "location": test_manager.cloud_tasks_manager.location,
+                "recent_tasks": len(tasks),
+                "tasks": tasks[:5]  # Return first 5 tasks
+            })
+        else:
+            return jsonify({
+                "cloud_tasks_enabled": True,
+                "error": "Cloud Tasks manager not initialized"
+            })
+        
+    except Exception as e:
+        logger.error(f"Error getting Cloud Tasks status: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/download/results/<execution_id>')
 def api_download_results(execution_id):
     """Download results file for an execution."""

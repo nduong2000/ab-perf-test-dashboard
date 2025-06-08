@@ -21,6 +21,7 @@ gcloud services enable cloudbuild.googleapis.com
 gcloud services enable run.googleapis.com
 gcloud services enable artifactregistry.googleapis.com
 gcloud services enable firestore.googleapis.com
+gcloud services enable cloudtasks.googleapis.com
 
 # Create Artifact Registry repository
 echo "📦 Creating Artifact Registry repository..."
@@ -36,6 +37,14 @@ gcloud firestore databases create \
     --location=$REGION \
     --type=firestore-native \
     --quiet || echo "Firestore database already exists"
+
+# Create Cloud Tasks queue
+echo "⚡ Creating Cloud Tasks queue..."
+gcloud tasks queues create ab-test-queue \
+    --location=$REGION \
+    --max-concurrent-dispatches=10 \
+    --max-retry-duration=7200s \
+    --quiet || echo "Cloud Tasks queue already exists"
 
 # Configure Docker authentication
 echo "🔐 Configuring Docker authentication..."
@@ -71,6 +80,15 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:github-actions@${PROJECT_ID}.iam.gserviceaccount.com" \
     --role="roles/datastore.user"
 
+# Grant Cloud Tasks permissions
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:github-actions@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --role="roles/cloudtasks.enqueuer"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:github-actions@${PROJECT_ID}.iam.gserviceaccount.com" \
+    --role="roles/cloudtasks.taskRunner"
+
 # Create and download service account key
 echo "🗝️  Creating service account key..."
 gcloud iam service-accounts keys create github-actions-key.json \
@@ -94,7 +112,7 @@ echo "  --allow-unauthenticated \\"
 echo "  --port=8080 \\"
 echo "  --memory=512Mi \\"
 echo "  --cpu=1 \\"
-echo "  --set-env-vars=FLASK_ENV=production,GRAPH_RAG_BASE_URL=https://aetraggraph-529012124872.us-central1.run.app,USE_FIRESTORE=true,GCP_PROJECT_ID=${PROJECT_ID}"
+echo "  --set-env-vars=FLASK_ENV=production,GRAPH_RAG_BASE_URL=https://aetraggraph-529012124872.us-central1.run.app,USE_FIRESTORE=true,GCP_PROJECT_ID=${PROJECT_ID},USE_CLOUD_TASKS=true,CLOUD_TASKS_QUEUE=ab-test-queue,CLOUD_TASKS_LOCATION=${REGION}"
 echo ""
 echo "🐳 Manual Docker build and push (if needed):"
 echo "docker build -t ${REGION}-docker.pkg.dev/${PROJECT_ID}/${SERVICE_NAME}/${SERVICE_NAME}:latest ."

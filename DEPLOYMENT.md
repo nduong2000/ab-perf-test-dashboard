@@ -19,8 +19,9 @@ chmod +x setup-gcp.sh
 ```
 
 This script will:
-- ✅ Enable required APIs (Cloud Run, Firestore, Artifact Registry, Cloud Build)
+- ✅ Enable required APIs (Cloud Run, Firestore, Artifact Registry, Cloud Build, Cloud Tasks)
 - ✅ Create Firestore database in native mode
+- ✅ Create Cloud Tasks queue for long-running tests
 - ✅ Set up Artifact Registry repository
 - ✅ Create service account with proper permissions
 - ✅ Generate service account key for GitHub Actions
@@ -81,24 +82,28 @@ gcloud run deploy ab-perf-test-dashboard \
   --port=8080 \
   --memory=512Mi \
   --cpu=1 \
-  --set-env-vars=FLASK_ENV=production,GRAPH_RAG_BASE_URL=https://aetraggraph-529012124872.us-central1.run.app,USE_FIRESTORE=true,GCP_PROJECT_ID=ab-perf-test-dashboard
+  --set-env-vars=FLASK_ENV=production,GRAPH_RAG_BASE_URL=https://aetraggraph-529012124872.us-central1.run.app,USE_FIRESTORE=true,GCP_PROJECT_ID=ab-perf-test-dashboard,USE_CLOUD_TASKS=true,CLOUD_TASKS_QUEUE=ab-test-queue,CLOUD_TASKS_LOCATION=us-central1
 ```
 
 ## 🧪 Testing the Deployment
 
-### 1. Test Firestore Connection
+### 1. Test Cloud Services
 
 ```bash
 # Set credentials for local testing
 export GOOGLE_APPLICATION_CREDENTIALS="github-actions-key.json"
 export USE_FIRESTORE=true
+export USE_CLOUD_TASKS=true
 export GCP_PROJECT_ID=ab-perf-test-dashboard
 
-# Run the test script
+# Test Firestore connection
 python test_firestore.py
+
+# Test Cloud Tasks connection
+python test_cloud_tasks.py
 ```
 
-Expected output:
+Expected Firestore output:
 ```
 ✅ Successfully imported Firestore manager
 🔥 Testing Firestore connection...
@@ -111,12 +116,25 @@ Expected output:
 ✅ All tests passed! Firestore is ready for use.
 ```
 
+Expected Cloud Tasks output:
+```
+✅ Successfully imported Cloud Tasks manager
+⚡ Testing Cloud Tasks connection...
+✅ Cloud Tasks connection successful
+📝 Testing queue operations...
+✅ Successfully listed tasks: 0 found
+✅ Duration estimation successful: 72 minutes
+✅ Cloud Tasks decision logic: Use Cloud Tasks = True
+✅ Cloud Tasks tests completed!
+```
+
 ### 2. Test the Deployed Application
 
 Visit your Cloud Run URL and verify:
 - ✅ Dashboard loads successfully
 - ✅ Can create test configurations
-- ✅ Can start test executions
+- ✅ Can start test executions (short tests run directly)
+- ✅ Long tests automatically queue via Cloud Tasks
 - ✅ Data persists between sessions
 - ✅ Results are stored in Firestore
 
@@ -130,6 +148,13 @@ Visit your Cloud Run URL and verify:
    - `test_executions`: Test run metadata
    - `test_results_summary`: Performance metrics
    - `test_configurations`: Saved configurations
+
+### Monitor Cloud Tasks
+
+1. Go to [Cloud Tasks Console](https://console.cloud.google.com/cloudtasks)
+2. Select your queue: `ab-test-queue`
+3. View queued, running, and completed tasks
+4. Monitor task execution logs and retry attempts
 
 ### Monitor Cloud Run
 
@@ -157,6 +182,8 @@ The setup script grants minimal required permissions:
 - `roles/storage.admin`: Access Cloud Storage (for build artifacts)
 - `roles/artifactregistry.writer`: Push container images
 - `roles/datastore.user`: Read/write Firestore data
+- `roles/cloudtasks.enqueuer`: Create and manage Cloud Tasks
+- `roles/cloudtasks.taskRunner`: Execute Cloud Tasks
 - `roles/iam.serviceAccountUser`: Use service account
 
 ### Network Security

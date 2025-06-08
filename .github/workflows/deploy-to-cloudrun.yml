@@ -63,6 +63,9 @@ jobs:
             LOG_LEVEL=INFO
             USE_FIRESTORE=true
             GCP_PROJECT_ID=ab-perf-test-dashboard
+            USE_CLOUD_TASKS=true
+            CLOUD_TASKS_QUEUE=ab-test-queue
+            CLOUD_TASKS_LOCATION=us-central1
 
       - name: Show Output
         run: echo ${{ steps.deploy.outputs.url }} 

@@ -29,6 +29,16 @@ try:
 except ImportError:
     USE_FIRESTORE = False
 
+# Conditionally import Cloud Tasks manager
+try:
+    if os.getenv('USE_CLOUD_TASKS', '').lower() == 'true':
+        from .cloud_tasks_manager import CloudTasksManager
+        USE_CLOUD_TASKS = True
+    else:
+        USE_CLOUD_TASKS = False
+except ImportError:
+    USE_CLOUD_TASKS = False
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -71,6 +81,11 @@ class ABTestManager:
         else:
             self._init_database()
             logger.info("💾 Using SQLite for local data storage")
+        
+        # Initialize Cloud Tasks if enabled
+        if USE_CLOUD_TASKS:
+            self.cloud_tasks_manager = CloudTasksManager()
+            logger.info("⚡ Using Cloud Tasks for long-running executions")
         
         # Runtime tracking
         self.active_executions: Dict[str, Future] = {}
@@ -211,13 +226,30 @@ class ABTestManager:
             # Save to database
             self._save_execution(execution)
             
-            # Start test in background
-            future = self.executor.submit(self._run_test_execution, execution_id, test_config)
+            # Determine if this should use Cloud Tasks
+            if USE_CLOUD_TASKS and self.cloud_tasks_manager.should_use_cloud_tasks(config_data):
+                # Use Cloud Tasks for long-running tests
+                estimated_minutes = self.cloud_tasks_manager.estimate_test_duration(config_data)
+                task_name = self.cloud_tasks_manager.create_ab_test_task(
+                    execution_id=execution_id,
+                    config_name=config_name,
+                    task_timeout_minutes=estimated_minutes + 30  # Add 30 minute buffer
+                )
+                
+                # Update execution with task information
+                self._update_execution_status(execution_id, "queued", f"Cloud Task: {task_name}")
+                
+                logger.info(f"⚡ Queued test execution via Cloud Tasks: {execution_id} for config: {config_name}")
+                logger.info(f"📊 Estimated duration: {estimated_minutes} minutes")
+            else:
+                # Run directly for shorter tests
+                future = self.executor.submit(self._run_test_execution, execution_id, test_config)
+                
+                with self.lock:
+                    self.active_executions[execution_id] = future
+                
+                logger.info(f"🚀 Started test execution directly: {execution_id} for config: {config_name}")
             
-            with self.lock:
-                self.active_executions[execution_id] = future
-            
-            logger.info(f"🚀 Started test execution: {execution_id} for config: {config_name}")
             return execution_id
             
         except Exception as e:
@@ -480,6 +512,41 @@ class ABTestManager:
                 
                 logger.info(f"🧹 Cleaned up {len(old_executions)} old test executions")
                 return len(old_executions)
+
+    def execute_test_via_cloud_task(self, execution_id: str, config_name: str) -> bool:
+        """
+        Execute a test that was queued via Cloud Tasks.
+        This method is called by the Cloud Tasks webhook endpoint.
+        """
+        try:
+            logger.info(f"⚡ Starting Cloud Task execution: {execution_id}")
+            
+            # Load configuration
+            config_data = self.load_configuration(config_name)
+            
+            # Create test configuration object
+            test_config = TestConfiguration(
+                name=config_data["name"],
+                description=config_data["description"],
+                models=config_data.get("models_to_test", []),
+                user_types=config_data.get("user_types", ["business"]),
+                think_mode_options=config_data.get("think_mode_options", [False]),
+                questions=config_data["questions"],
+                iterations=config_data.get("iterations", 1),
+                delay_between_tests=config_data.get("delay_between_questions", 5),
+                timeout=60.0
+            )
+            
+            # Run the test directly (we're now in the Cloud Task context)
+            self._run_test_execution(execution_id, test_config)
+            
+            logger.info(f"✅ Cloud Task execution completed: {execution_id}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Cloud Task execution failed: {execution_id} - {str(e)}")
+            self._update_execution_status(execution_id, "failed", f"Cloud Task error: {str(e)}")
+            return False
     
     def _run_test_execution(self, execution_id: str, test_config: TestConfiguration):
         """Run a test execution (called in background thread)."""

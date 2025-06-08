@@ -12,6 +12,7 @@ A comprehensive A/B testing framework for evaluating Graph RAG system performanc
 - **60-second Timeout**: Extended timeout for complex Graph RAG queries
 - **Persistent Storage**: SQLite for local development, Google Cloud Firestore for production
 - **Cloud-Native**: Seamless deployment to Google Cloud Run with persistent data storage
+- **Long-Running Tests**: Google Cloud Tasks for A/B tests exceeding 60-minute timeout limits
 
 ## 📁 Package Contents
 
@@ -71,8 +72,9 @@ ab_testing_package/
    ```
 
    This script will:
-   - Enable required APIs (Cloud Run, Firestore, Artifact Registry)
+   - Enable required APIs (Cloud Run, Firestore, Artifact Registry, Cloud Tasks)
    - Create Firestore database for persistent storage
+   - Create Cloud Tasks queue for long-running tests
    - Set up service account with proper permissions
    - Generate service account key for GitHub Actions
 
@@ -95,11 +97,16 @@ ab_testing_package/
    - Check Actions tab for deployment progress
    - Access deployed app at the provided Cloud Run URL
 
-4. **Test Firestore Connection** (Optional):
+4. **Test Cloud Services** (Optional):
    ```bash
    # Test locally with service account credentials
    export GOOGLE_APPLICATION_CREDENTIALS="github-actions-key.json"
+   
+   # Test Firestore connection
    python test_firestore.py
+   
+   # Test Cloud Tasks connection
+   python test_cloud_tasks.py
    ```
 
 ## 🧪 Test Configurations
@@ -169,6 +176,9 @@ The package includes pre-configured A/B tests:
 | `AB_TEST_MAX_CONCURRENT` | Maximum concurrent tests | `3` |
 | `USE_FIRESTORE` | Enable Firestore for persistent storage | `false` |
 | `GCP_PROJECT_ID` | Google Cloud Project ID for Firestore | `ab-perf-test-dashboard` |
+| `USE_CLOUD_TASKS` | Enable Cloud Tasks for long-running tests | `false` |
+| `CLOUD_TASKS_QUEUE` | Cloud Tasks queue name | `ab-test-queue` |
+| `CLOUD_TASKS_LOCATION` | Cloud Tasks location | `us-central1` |
 | `PORT` | Application port | `8080` |
 
 ### Supported Models
@@ -199,6 +209,13 @@ The application supports two storage backends:
   - `test_results_summary`: Aggregated performance metrics
   - `test_configurations`: Saved test configurations
 - **Setup**: Enabled automatically when `USE_FIRESTORE=true`
+
+### Long-Running Tests (Google Cloud Tasks)
+- **Purpose**: Handle A/B tests that exceed Cloud Run's 60-minute timeout
+- **Features**: Asynchronous execution, automatic retries, scheduling
+- **Queue**: `ab-test-queue` for processing long-running tests
+- **Automatic**: Tests estimated >45 minutes automatically use Cloud Tasks
+- **Setup**: Enabled automatically when `USE_CLOUD_TASKS=true`
 
 ### Data Migration
 When switching from SQLite to Firestore, existing data remains in SQLite. The application will start fresh with Firestore. To migrate data:
