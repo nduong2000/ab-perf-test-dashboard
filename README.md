@@ -137,7 +137,7 @@ The package includes pre-configured A/B tests:
 
 ## 📊 Dashboard Features
 
-### 🏠 Main Dashboard
+### 🏠 Main Dashboard.
 - System overview and quick stats
 - Recent test executions
 - Performance summaries
