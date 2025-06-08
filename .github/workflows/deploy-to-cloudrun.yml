@@ -61,6 +61,8 @@ jobs:
             AB_TEST_CONFIG_DIR=ab_testing/configs
             AB_TEST_RESULTS_DIR=ab_testing/results
             LOG_LEVEL=INFO
+            USE_FIRESTORE=true
+            GCP_PROJECT_ID=ab-perf-test-dashboard
 
       - name: Show Output
         run: echo ${{ steps.deploy.outputs.url }} 

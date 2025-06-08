@@ -10,7 +10,8 @@ A comprehensive A/B testing framework for evaluating Graph RAG system performanc
 - **Comprehensive Analysis**: Detailed performance metrics and AI-generated recommendations
 - **Pre-configured Tests**: Ready-to-use test configurations for various scenarios
 - **60-second Timeout**: Extended timeout for complex Graph RAG queries
-- **SQLite Database**: Persistent storage for test configurations and results
+- **Persistent Storage**: SQLite for local development, Google Cloud Firestore for production
+- **Cloud-Native**: Seamless deployment to Google Cloud Run with persistent data storage
 
 ## 📁 Package Contents
 
@@ -60,27 +61,46 @@ ab_testing_package/
    - **Executions**: http://localhost:8080/executions
    - **Results**: http://localhost:8080/results
 
-### GCP Deployment via GitHub Actions
+### GCP Deployment with Firestore
 
-1. **Setup GitHub Repository**:
+1. **Setup Google Cloud Project**:
+   ```bash
+   # Run the setup script to configure GCP resources
+   chmod +x setup-gcp.sh
+   ./setup-gcp.sh
+   ```
+
+   This script will:
+   - Enable required APIs (Cloud Run, Firestore, Artifact Registry)
+   - Create Firestore database for persistent storage
+   - Set up service account with proper permissions
+   - Generate service account key for GitHub Actions
+
+2. **Configure GitHub Secrets**:
+   - `GCP_SA_KEY`: Copy the entire contents of `github-actions-key.json`
+   
+   Go to your GitHub repository → Settings → Secrets and variables → Actions → New repository secret
+
+3. **Deploy**:
    ```bash
    git init
    git add .
-   git commit -m "Initial A/B testing app"
+   git commit -m "Initial A/B testing app with Firestore"
    git branch -M main
    git remote add origin https://github.com/yourusername/ab-testing-app.git
    git push -u origin main
    ```
 
-2. **Configure GitHub Secrets**:
-   - `GCP_PROJECT_ID`: Your Google Cloud Project ID
-   - `GCP_SA_KEY`: Service Account JSON key (base64 encoded)
-   - `GRAPH_RAG_BASE_URL`: Your Graph RAG system URL (optional)
-
-3. **Deploy**:
    - Push to `main` branch triggers automatic deployment
    - Check Actions tab for deployment progress
    - Access deployed app at the provided Cloud Run URL
+
+4. **Test Firestore Connection** (Optional):
+   ```bash
+   # Test locally with service account credentials
+   export GOOGLE_APPLICATION_CREDENTIALS="github-actions-key.json"
+   python test_firestore.py
+   ```
 
 ## 🧪 Test Configurations
 
@@ -147,6 +167,8 @@ The package includes pre-configured A/B tests:
 | `AB_TEST_TIMEOUT` | Request timeout in seconds | `60` |
 | `AB_TEST_DEFAULT_DELAY` | Delay between tests in seconds | `2` |
 | `AB_TEST_MAX_CONCURRENT` | Maximum concurrent tests | `3` |
+| `USE_FIRESTORE` | Enable Firestore for persistent storage | `false` |
+| `GCP_PROJECT_ID` | Google Cloud Project ID for Firestore | `ab-perf-test-dashboard` |
 | `PORT` | Application port | `8080` |
 
 ### Supported Models
@@ -158,6 +180,32 @@ The package includes pre-configured A/B tests:
 - `gemini-2.0-flash-001`
 - `gemini-1.5-flash-001`
 - `gemini-1.5-pro-001`
+
+## 💾 Data Persistence
+
+The application supports two storage backends:
+
+### Local Development (SQLite)
+- **Default**: SQLite database for local development
+- **Location**: `ab_testing/test_manager.db`
+- **Features**: Full functionality, file-based storage
+- **Setup**: No additional configuration required
+
+### Production (Google Cloud Firestore)
+- **Cloud-Native**: Firestore for production deployments
+- **Features**: Scalable, managed NoSQL database
+- **Collections**:
+  - `test_executions`: Test run metadata and status
+  - `test_results_summary`: Aggregated performance metrics
+  - `test_configurations`: Saved test configurations
+- **Setup**: Enabled automatically when `USE_FIRESTORE=true`
+
+### Data Migration
+When switching from SQLite to Firestore, existing data remains in SQLite. The application will start fresh with Firestore. To migrate data:
+
+1. Export existing results from SQLite
+2. Use the Firestore admin interface to import data
+3. Or run tests again to populate Firestore
 
 ## 🛠️ Development
 

@@ -3,6 +3,7 @@ A/B Test Manager
 Manages the lifecycle of A/B tests including scheduling, execution, monitoring, and analysis.
 """
 
+import os
 import json
 import sqlite3
 import threading
@@ -17,6 +18,16 @@ import uuid
 
 from .decorators import ABTestRunner, TestResult, TestConfiguration
 from .config_generator import ABTestConfigGenerator
+
+# Conditionally import Firestore manager
+try:
+    if os.getenv('USE_FIRESTORE', '').lower() == 'true':
+        from .firestore_manager import FirestoreManager, TestExecution as FirestoreTestExecution
+        USE_FIRESTORE = True
+    else:
+        USE_FIRESTORE = False
+except ImportError:
+    USE_FIRESTORE = False
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +64,13 @@ class ABTestManager:
         self.config_dir.mkdir(parents=True, exist_ok=True)
         self.results_dir.mkdir(parents=True, exist_ok=True)
         
-        # Initialize database
-        self._init_database()
+        # Initialize data storage
+        if USE_FIRESTORE:
+            self.firestore_manager = FirestoreManager()
+            logger.info("🔥 Using Firestore for persistent data storage")
+        else:
+            self._init_database()
+            logger.info("💾 Using SQLite for local data storage")
         
         # Runtime tracking
         self.active_executions: Dict[str, Future] = {}
@@ -226,56 +242,93 @@ class ABTestManager:
     
     def get_test_status(self, execution_id: str) -> Optional[TestExecution]:
         """Get the status of a test execution."""
-        with sqlite3.connect(self.database_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT * FROM test_executions WHERE execution_id = ?
-            """, (execution_id,))
-            
-            row = cursor.fetchone()
-            if row:
+        if USE_FIRESTORE:
+            firestore_execution = self.firestore_manager.get_execution(execution_id)
+            if firestore_execution:
+                # Convert from Firestore format to local format
                 return TestExecution(
-                    execution_id=row[0],
-                    config_name=row[1],
-                    status=row[2],
-                    start_time=row[3],
-                    end_time=row[4],
-                    total_tests=row[5],
-                    completed_tests=row[6],
-                    failed_tests=row[7],
-                    results_file=row[8],
-                    error_message=row[9]
+                    execution_id=firestore_execution.execution_id,
+                    config_name=firestore_execution.config_name,
+                    status=firestore_execution.status,
+                    start_time=firestore_execution.start_time,
+                    end_time=firestore_execution.end_time,
+                    total_tests=firestore_execution.total_tests,
+                    completed_tests=firestore_execution.completed_tests,
+                    failed_tests=firestore_execution.failed_tests,
+                    results_file=firestore_execution.results_file,
+                    error_message=firestore_execution.error_message
                 )
-        
-        return None
+            return None
+        else:
+            with sqlite3.connect(self.database_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT * FROM test_executions WHERE execution_id = ?
+                """, (execution_id,))
+                
+                row = cursor.fetchone()
+                if row:
+                    return TestExecution(
+                        execution_id=row[0],
+                        config_name=row[1],
+                        status=row[2],
+                        start_time=row[3],
+                        end_time=row[4],
+                        total_tests=row[5],
+                        completed_tests=row[6],
+                        failed_tests=row[7],
+                        results_file=row[8],
+                        error_message=row[9]
+                    )
+            
+            return None
     
     def list_test_executions(self, limit: int = 20) -> List[TestExecution]:
         """List recent test executions."""
-        executions = []
-        
-        with sqlite3.connect(self.database_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
-                SELECT * FROM test_executions 
-                ORDER BY created_at DESC 
-                LIMIT ?
-            """, (limit,))
-            
-            for row in cursor.fetchall():
+        if USE_FIRESTORE:
+            firestore_executions = self.firestore_manager.list_executions(limit)
+            # Convert from Firestore format to local format
+            executions = []
+            for fe in firestore_executions:
                 executions.append(TestExecution(
-                    execution_id=row[0],
-                    config_name=row[1],
-                    status=row[2],
-                    start_time=row[3],
-                    end_time=row[4],
-                    total_tests=row[5],
-                    completed_tests=row[6],
-                    failed_tests=row[7],
-                    results_file=row[8],
-                    error_message=row[9]
+                    execution_id=fe.execution_id,
+                    config_name=fe.config_name,
+                    status=fe.status,
+                    start_time=fe.start_time,
+                    end_time=fe.end_time,
+                    total_tests=fe.total_tests,
+                    completed_tests=fe.completed_tests,
+                    failed_tests=fe.failed_tests,
+                    results_file=fe.results_file,
+                    error_message=fe.error_message
                 ))
-        
-        return executions
+            return executions
+        else:
+            executions = []
+            
+            with sqlite3.connect(self.database_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT * FROM test_executions 
+                    ORDER BY created_at DESC 
+                    LIMIT ?
+                """, (limit,))
+                
+                for row in cursor.fetchall():
+                    executions.append(TestExecution(
+                        execution_id=row[0],
+                        config_name=row[1],
+                        status=row[2],
+                        start_time=row[3],
+                        end_time=row[4],
+                        total_tests=row[5],
+                        completed_tests=row[6],
+                        failed_tests=row[7],
+                        results_file=row[8],
+                        error_message=row[9]
+                    ))
+            
+            return executions
     
     def get_test_results(self, execution_id: str) -> Optional[Dict[str, Any]]:
         """Get detailed test results for an execution."""
@@ -396,34 +449,37 @@ class ABTestManager:
     
     def cleanup_old_executions(self, days_old: int = 30) -> int:
         """Cleanup old test executions and results."""
-        cutoff_date = datetime.now() - timedelta(days=days_old)
-        
-        with sqlite3.connect(self.database_path) as conn:
-            cursor = conn.cursor()
+        if USE_FIRESTORE:
+            return self.firestore_manager.cleanup_old_executions(days_old)
+        else:
+            cutoff_date = datetime.now() - timedelta(days=days_old)
             
-            # Get old executions
-            cursor.execute("""
-                SELECT execution_id, results_file FROM test_executions 
-                WHERE created_at < ?
-            """, (cutoff_date.isoformat(),))
-            
-            old_executions = cursor.fetchall()
-            
-            # Delete result files
-            for execution_id, results_file in old_executions:
-                if results_file:
-                    results_path = self.results_dir / results_file
-                    if results_path.exists():
-                        results_path.unlink()
-            
-            # Delete database records
-            cursor.execute("DELETE FROM test_results_summary WHERE execution_id IN (SELECT execution_id FROM test_executions WHERE created_at < ?)", (cutoff_date.isoformat(),))
-            cursor.execute("DELETE FROM test_executions WHERE created_at < ?", (cutoff_date.isoformat(),))
-            
-            conn.commit()
-            
-            logger.info(f"🧹 Cleaned up {len(old_executions)} old test executions")
-            return len(old_executions)
+            with sqlite3.connect(self.database_path) as conn:
+                cursor = conn.cursor()
+                
+                # Get old executions
+                cursor.execute("""
+                    SELECT execution_id, results_file FROM test_executions 
+                    WHERE created_at < ?
+                """, (cutoff_date.isoformat(),))
+                
+                old_executions = cursor.fetchall()
+                
+                # Delete result files
+                for execution_id, results_file in old_executions:
+                    if results_file:
+                        results_path = self.results_dir / results_file
+                        if results_path.exists():
+                            results_path.unlink()
+                
+                # Delete database records
+                cursor.execute("DELETE FROM test_results_summary WHERE execution_id IN (SELECT execution_id FROM test_executions WHERE created_at < ?)", (cutoff_date.isoformat(),))
+                cursor.execute("DELETE FROM test_executions WHERE created_at < ?", (cutoff_date.isoformat(),))
+                
+                conn.commit()
+                
+                logger.info(f"🧹 Cleaned up {len(old_executions)} old test executions")
+                return len(old_executions)
     
     def _run_test_execution(self, execution_id: str, test_config: TestConfiguration):
         """Run a test execution (called in background thread)."""
@@ -448,15 +504,26 @@ class ABTestManager:
             successful_tests = len([r for r in results if r.success])
             failed_tests = len([r for r in results if not r.success])
             
-            with sqlite3.connect(self.database_path) as conn:
-                conn.execute("""
-                    UPDATE test_executions 
-                    SET status = ?, end_time = ?, completed_tests = ?, 
-                        failed_tests = ?, results_file = ?
-                    WHERE execution_id = ?
-                """, ("completed", datetime.now().isoformat(), successful_tests, 
-                      failed_tests, results_filename, execution_id))
-                conn.commit()
+            if USE_FIRESTORE:
+                # Update Firestore execution with completion details
+                execution = self.firestore_manager.get_execution(execution_id)
+                if execution:
+                    execution.status = "completed"
+                    execution.end_time = datetime.now().isoformat()
+                    execution.completed_tests = successful_tests
+                    execution.failed_tests = failed_tests
+                    execution.results_file = results_filename
+                    self.firestore_manager.save_execution(execution)
+            else:
+                with sqlite3.connect(self.database_path) as conn:
+                    conn.execute("""
+                        UPDATE test_executions 
+                        SET status = ?, end_time = ?, completed_tests = ?, 
+                            failed_tests = ?, results_file = ?
+                        WHERE execution_id = ?
+                    """, ("completed", datetime.now().isoformat(), successful_tests, 
+                          failed_tests, results_filename, execution_id))
+                    conn.commit()
             
             # Store summary results
             self._store_result_summary(execution_id, results)
@@ -475,65 +542,83 @@ class ABTestManager:
     
     def _save_execution(self, execution: TestExecution):
         """Save test execution to database."""
-        with sqlite3.connect(self.database_path) as conn:
-            conn.execute("""
-                INSERT INTO test_executions 
-                (execution_id, config_name, status, start_time, total_tests, created_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (execution.execution_id, execution.config_name, execution.status,
-                  datetime.now().isoformat(), execution.total_tests, datetime.now().isoformat()))
-            conn.commit()
+        if USE_FIRESTORE:
+            # Convert to Firestore format and save
+            firestore_execution = FirestoreTestExecution(
+                execution_id=execution.execution_id,
+                config_name=execution.config_name,
+                status=execution.status,
+                start_time=datetime.now().isoformat(),
+                total_tests=execution.total_tests,
+                created_at=datetime.now().isoformat()
+            )
+            self.firestore_manager.save_execution(firestore_execution)
+        else:
+            with sqlite3.connect(self.database_path) as conn:
+                conn.execute("""
+                    INSERT INTO test_executions 
+                    (execution_id, config_name, status, start_time, total_tests, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                """, (execution.execution_id, execution.config_name, execution.status,
+                      datetime.now().isoformat(), execution.total_tests, datetime.now().isoformat()))
+                conn.commit()
     
     def _update_execution_status(self, execution_id: str, status: str, error_message: str = None):
         """Update execution status in database."""
-        with sqlite3.connect(self.database_path) as conn:
-            if error_message:
-                conn.execute("""
-                    UPDATE test_executions 
-                    SET status = ?, error_message = ?
-                    WHERE execution_id = ?
-                """, (status, error_message, execution_id))
-            else:
-                conn.execute("""
-                    UPDATE test_executions 
-                    SET status = ?
-                    WHERE execution_id = ?
-                """, (status, execution_id))
-            conn.commit()
+        if USE_FIRESTORE:
+            self.firestore_manager.update_execution_status(execution_id, status, error_message)
+        else:
+            with sqlite3.connect(self.database_path) as conn:
+                if error_message:
+                    conn.execute("""
+                        UPDATE test_executions 
+                        SET status = ?, error_message = ?
+                        WHERE execution_id = ?
+                    """, (status, error_message, execution_id))
+                else:
+                    conn.execute("""
+                        UPDATE test_executions 
+                        SET status = ?
+                        WHERE execution_id = ?
+                    """, (status, execution_id))
+                conn.commit()
     
     def _store_result_summary(self, execution_id: str, results: List[TestResult]):
         """Store summary statistics in database."""
-        # Group results by model/user_type/think_mode
-        summary_data = {}
-        
-        for result in results:
-            key = (result.model, result.user_type, result.think_mode)
+        if USE_FIRESTORE:
+            self.firestore_manager.save_result_summary(execution_id, results)
+        else:
+            # Group results by model/user_type/think_mode
+            summary_data = {}
             
-            if key not in summary_data:
-                summary_data[key] = {
-                    "response_times": [],
-                    "success_count": 0,
-                    "total_count": 0
-                }
-            
-            summary_data[key]["total_count"] += 1
-            if result.success:
-                summary_data[key]["success_count"] += 1
-                summary_data[key]["response_times"].append(result.response_time)
-        
-        # Insert summary data
-        with sqlite3.connect(self.database_path) as conn:
-            for (model, user_type, think_mode), data in summary_data.items():
-                avg_time = sum(data["response_times"]) / len(data["response_times"]) if data["response_times"] else 0
-                success_rate = data["success_count"] / data["total_count"] * 100 if data["total_count"] > 0 else 0
+            for result in results:
+                key = (result.model, result.user_type, result.think_mode)
                 
-                conn.execute("""
-                    INSERT INTO test_results_summary 
-                    (execution_id, model, user_type, think_mode, avg_response_time, success_rate, total_tests)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, (execution_id, model, user_type, think_mode, avg_time, success_rate, data["total_count"]))
+                if key not in summary_data:
+                    summary_data[key] = {
+                        "response_times": [],
+                        "success_count": 0,
+                        "total_count": 0
+                    }
+                
+                summary_data[key]["total_count"] += 1
+                if result.success:
+                    summary_data[key]["success_count"] += 1
+                    summary_data[key]["response_times"].append(result.response_time)
             
-            conn.commit()
+            # Insert summary data
+            with sqlite3.connect(self.database_path) as conn:
+                for (model, user_type, think_mode), data in summary_data.items():
+                    avg_time = sum(data["response_times"]) / len(data["response_times"]) if data["response_times"] else 0
+                    success_rate = data["success_count"] / data["total_count"] * 100 if data["total_count"] > 0 else 0
+                    
+                    conn.execute("""
+                        INSERT INTO test_results_summary 
+                        (execution_id, model, user_type, think_mode, avg_response_time, success_rate, total_tests)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (execution_id, model, user_type, think_mode, avg_time, success_rate, data["total_count"]))
+                
+                conn.commit()
 
 
 if __name__ == "__main__":
