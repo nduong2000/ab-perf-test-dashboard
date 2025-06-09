@@ -9,7 +9,7 @@ import logging
 from typing import Dict, Any, Optional
 from datetime import datetime, timedelta
 from google.cloud import tasks_v2
-from google.protobuf import timestamp_pb2
+from google.protobuf import timestamp_pb2, duration_pb2
 
 logger = logging.getLogger(__name__)
 
@@ -76,10 +76,10 @@ class CloudTasksManager:
                 "name": f"{self.parent}/tasks/ab-test-{execution_id}-{int(datetime.utcnow().timestamp())}"
             }
             
-            # Set task timeout
+            # Set task timeout (dispatch_deadline expects Duration, not Timestamp)
             if task_timeout_minutes > 0:
-                timeout = timestamp_pb2.Timestamp()
-                timeout.FromDatetime(datetime.utcnow() + timedelta(minutes=task_timeout_minutes))
+                timeout = duration_pb2.Duration()
+                timeout.FromTimedelta(timedelta(minutes=task_timeout_minutes))
                 task["dispatch_deadline"] = timeout
             
             # Set schedule time if delay is specified
