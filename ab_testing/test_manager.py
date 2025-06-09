@@ -39,6 +39,16 @@ try:
 except ImportError:
     USE_CLOUD_TASKS = False
 
+# Conditionally import Cloud Workflows manager
+try:
+    if os.getenv('USE_CLOUD_WORKFLOWS', '').lower() == 'true':
+        from .workflows_manager import CloudWorkflowsManager
+        USE_CLOUD_WORKFLOWS = True
+    else:
+        USE_CLOUD_WORKFLOWS = False
+except ImportError:
+    USE_CLOUD_WORKFLOWS = False
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -86,6 +96,11 @@ class ABTestManager:
         if USE_CLOUD_TASKS:
             self.cloud_tasks_manager = CloudTasksManager()
             logger.info("⚡ Using Cloud Tasks for long-running executions")
+        
+        # Initialize Cloud Workflows if enabled
+        if USE_CLOUD_WORKFLOWS:
+            self.workflows_manager = CloudWorkflowsManager()
+            logger.info("🔄 Using Cloud Workflows for parallel test execution")
         
         # Runtime tracking
         self.active_executions: Dict[str, Future] = {}
@@ -226,14 +241,39 @@ class ABTestManager:
             # Save to database
             self._save_execution(execution)
             
-            # Determine if this should use Cloud Tasks
-            if USE_CLOUD_TASKS and self.cloud_tasks_manager.should_use_cloud_tasks(config_data):
-                # Use Cloud Tasks for long-running tests
+            # Determine execution strategy: Cloud Workflows > Cloud Tasks > Direct execution
+            if USE_CLOUD_WORKFLOWS and self.workflows_manager.should_use_workflows(config_data):
+                # Use Cloud Workflows for parallel execution of long-running or complex tests
+                workflow_execution_name = self.workflows_manager.create_workflow_execution(
+                    execution_id=execution_id,
+                    config_name=config_name
+                )
+                
+                # Update execution with workflow information
+                parallel_workers = self.workflows_manager._calculate_parallel_workers(config_name)
+                self._update_execution_status(execution_id, "queued", f"Cloud Workflow: {workflow_execution_name}")
+                
+                # Update Firestore with workflow-specific information
+                if USE_FIRESTORE and hasattr(self, 'firestore_manager'):
+                    self.firestore_manager.update_execution_with_workflow_info(
+                        execution_id, workflow_execution_name, parallel_workers
+                    )
+                
+                logger.info(f"🔄 Queued test execution via Cloud Workflows: {execution_id} for config: {config_name}")
+                estimated_minutes = self.workflows_manager.estimate_test_duration(config_data)
+                logger.info(f"📊 Estimated duration: {estimated_minutes} minutes with {parallel_workers} parallel workers")
+                
+            elif USE_CLOUD_TASKS and self.cloud_tasks_manager.should_use_cloud_tasks(config_data):
+                # Use Cloud Tasks for long-running tests (legacy fallback)
                 estimated_minutes = self.cloud_tasks_manager.estimate_test_duration(config_data)
+                
+                # Cap the task timeout at Cloud Run's maximum (60 minutes)
+                task_timeout = min(estimated_minutes + 30, 60)
+                
                 task_name = self.cloud_tasks_manager.create_ab_test_task(
                     execution_id=execution_id,
                     config_name=config_name,
-                    task_timeout_minutes=estimated_minutes + 30  # Add 30 minute buffer
+                    task_timeout_minutes=task_timeout
                 )
                 
                 # Update execution with task information

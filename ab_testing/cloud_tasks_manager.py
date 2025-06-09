@@ -76,11 +76,16 @@ class CloudTasksManager:
                 "name": f"{self.parent}/tasks/ab-test-{execution_id}-{int(datetime.utcnow().timestamp())}"
             }
             
-            # Set task timeout (dispatch_deadline expects Duration, not Timestamp)
-            if task_timeout_minutes > 0:
+            # Set task timeout (dispatch_deadline must be between 15s and 30m)
+            # For long-running tasks, we don't set dispatch_deadline to allow Cloud Run's full timeout
+            if task_timeout_minutes > 0 and task_timeout_minutes <= 30:
                 timeout = duration_pb2.Duration()
                 timeout.FromTimedelta(timedelta(minutes=task_timeout_minutes))
                 task["dispatch_deadline"] = timeout
+            elif task_timeout_minutes > 30:
+                # For tasks longer than 30 minutes, don't set dispatch_deadline
+                # This allows Cloud Run to use its maximum timeout (up to 60 minutes per request)
+                logger.info(f"🕐 Long-running task ({task_timeout_minutes}m), using Cloud Run default timeout")
             
             # Set schedule time if delay is specified
             if schedule_delay_seconds > 0:

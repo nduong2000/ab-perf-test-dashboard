@@ -5,4 +5,5 @@ python-dotenv==1.0.0
 Werkzeug==3.0.1
 gunicorn==21.2.0
 google-cloud-firestore==2.11.1
-google-cloud-tasks==2.16.4 
+google-cloud-tasks==2.16.4
+google-cloud-workflows==1.14.0 

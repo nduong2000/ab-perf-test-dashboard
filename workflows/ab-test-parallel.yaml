@@ -1,0 +1,162 @@
+# Cloud Workflows definition for parallel A/B test execution
+# This workflow splits test execution into parallel branches to stay under 45-minute limit
+
+main:
+  params: [args]
+  steps:
+    - init:
+        assign:
+          - execution_id: ${args.execution_id}
+          - config_name: ${args.config_name}
+          - service_url: ${args.service_url}
+          - parallel_workers: ${default(args.parallel_workers, 2)}
+          - workflow_start_time: ${sys.now()}
+        
+    - log_start:
+        call: http.post
+        args:
+          url: ${service_url + "/api/workflows/log"}
+          headers:
+            Content-Type: "application/json"
+          body:
+            execution_id: ${execution_id}
+            event: "workflow_started"
+            timestamp: ${workflow_start_time}
+            parallel_workers: ${parallel_workers}
+        result: start_log_response
+        
+    - load_test_config:
+        call: http.post
+        args:
+          url: ${service_url + "/api/workflows/prepare"}
+          headers:
+            Content-Type: "application/json"
+          body:
+            execution_id: ${execution_id}
+            config_name: ${config_name}
+            parallel_workers: ${parallel_workers}
+        result: test_preparation
+        
+    - validate_preparation:
+        switch:
+          - condition: ${test_preparation.body.success != true}
+            next: handle_preparation_error
+        next: execute_parallel_tests
+        
+    - execute_parallel_tests:
+        parallel:
+          shared: [execution_id, service_url]
+          for:
+            value: worker_batch
+            index: worker_index
+            in: ${test_preparation.body.test_batches}
+            steps:
+              - execute_worker_batch:
+                  call: execute_test_batch
+                  args:
+                    execution_id: ${execution_id}
+                    service_url: ${service_url}
+                    worker_index: ${worker_index}
+                    test_batch: ${worker_batch}
+              - log_batch_completion:
+                  call: http.post
+                  args:
+                    url: ${service_url + "/api/workflows/log"}
+                    headers:
+                      Content-Type: "application/json"
+                    body:
+                      execution_id: ${execution_id}
+                      event: "batch_completed"
+                      worker_index: ${worker_index}
+                      timestamp: ${sys.now()}
+        
+    - aggregate_results:
+        call: http.post
+        args:
+          url: ${service_url + "/api/workflows/aggregate"}
+          headers:
+            Content-Type: "application/json"
+          body:
+            execution_id: ${execution_id}
+            workflow_start_time: ${workflow_start_time}
+            workflow_end_time: ${sys.now()}
+        result: aggregation_response
+        
+    - finalize_execution:
+        call: http.post
+        args:
+          url: ${service_url + "/api/workflows/finalize"}
+          headers:
+            Content-Type: "application/json"
+          body:
+            execution_id: ${execution_id}
+            final_status: "completed"
+            total_duration: ${sys.now() - workflow_start_time}
+        result: finalization_response
+        
+    - return_success:
+        return:
+          success: true
+          execution_id: ${execution_id}
+          total_duration: ${sys.now() - workflow_start_time}
+          parallel_workers: ${parallel_workers}
+          aggregation_result: ${aggregation_response.body}
+
+    - handle_preparation_error:
+        call: http.post
+        args:
+          url: ${service_url + "/api/workflows/finalize"}
+          headers:
+            Content-Type: "application/json"
+          body:
+            execution_id: ${execution_id}
+            final_status: "failed"
+            error_message: ${test_preparation.body.error}
+        result: error_finalization
+        next: return_error
+        
+    - return_error:
+        return:
+          success: false
+          execution_id: ${execution_id}
+          error: ${test_preparation.body.error}
+
+# Subworkflow for executing a single test batch
+execute_test_batch:
+  params: [execution_id, service_url, worker_index, test_batch]
+  steps:
+    - log_batch_start:
+        call: http.post
+        args:
+          url: ${service_url + "/api/workflows/log"}
+          headers:
+            Content-Type: "application/json"
+          body:
+            execution_id: ${execution_id}
+            event: "batch_started"
+            worker_index: ${worker_index}
+            timestamp: ${sys.now()}
+            batch_size: ${len(test_batch.tests)}
+            
+    - execute_tests:
+        call: http.post
+        args:
+          url: ${service_url + "/api/workflows/execute-batch"}
+          headers:
+            Content-Type: "application/json"
+          body:
+            execution_id: ${execution_id}
+            worker_index: ${worker_index}
+            test_batch: ${test_batch}
+          timeout: 2700  # 45 minutes
+        result: batch_execution_result
+        
+    - return_batch_result:
+        return:
+          worker_index: ${worker_index}
+          batch_id: ${test_batch.batch_id}
+          success: ${batch_execution_result.body.success}
+          tests_completed: ${batch_execution_result.body.tests_completed}
+          tests_failed: ${batch_execution_result.body.tests_failed}
+          duration: ${batch_execution_result.body.duration}
+          error: ${default(batch_execution_result.body.error, null)}

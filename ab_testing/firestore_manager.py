@@ -28,6 +28,10 @@ class TestExecution:
     results_file: Optional[str] = None
     error_message: Optional[str] = None
     created_at: Optional[str] = None
+    # Workflow-specific fields
+    workflow_execution_name: Optional[str] = None
+    parallel_workers: int = 1
+    workflow_progress: Optional[Dict] = None
 
 @dataclass
 class TestResultSummary:
@@ -253,4 +257,97 @@ class FirestoreManager:
             
         except Exception as e:
             logger.error(f"❌ Failed to cleanup old executions: {e}")
-            return 0 
+            return 0
+    
+    def update_workflow_progress(self, execution_id: str, workflow_progress: Dict[str, Any]):
+        """Update workflow progress for an execution."""
+        try:
+            execution_ref = self.executions_ref.document(execution_id)
+            execution_ref.update({
+                'workflow_progress': workflow_progress,
+                'updated_at': datetime.utcnow().isoformat()
+            })
+            logger.debug(f"📊 Updated workflow progress for {execution_id}")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to update workflow progress for {execution_id}: {e}")
+    
+    def log_workflow_event(self, execution_id: str, event: str, details: Dict[str, Any] = None):
+        """Log a workflow event for tracking progress."""
+        try:
+            event_data = {
+                'execution_id': execution_id,
+                'event': event,
+                'timestamp': datetime.utcnow().isoformat(),
+                'details': details or {}
+            }
+            
+            # Store in a workflow_events subcollection
+            events_ref = self.executions_ref.document(execution_id).collection('workflow_events')
+            events_ref.add(event_data)
+            
+            logger.debug(f"📝 Logged workflow event [{execution_id}]: {event}")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to log workflow event for {execution_id}: {e}")
+    
+    def get_workflow_events(self, execution_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get workflow events for an execution."""
+        try:
+            events_ref = self.executions_ref.document(execution_id).collection('workflow_events')
+            events = events_ref.order_by('timestamp', direction=firestore.Query.DESCENDING).limit(limit).stream()
+            
+            return [event.to_dict() for event in events]
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get workflow events for {execution_id}: {e}")
+            return []
+    
+    def update_execution_with_workflow_info(self, execution_id: str, workflow_execution_name: str, parallel_workers: int):
+        """Update execution with workflow-specific information."""
+        try:
+            execution_ref = self.executions_ref.document(execution_id)
+            execution_ref.update({
+                'workflow_execution_name': workflow_execution_name,
+                'parallel_workers': parallel_workers,
+                'updated_at': datetime.utcnow().isoformat()
+            })
+            logger.info(f"🔄 Updated execution {execution_id} with workflow info")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to update execution with workflow info: {e}")
+    
+    def get_active_workflow_executions(self) -> List[TestExecution]:
+        """Get all currently active workflow executions."""
+        try:
+            active_docs = (self.executions_ref
+                          .where('status', 'in', ['pending', 'running', 'queued'])
+                          .where('workflow_execution_name', '!=', None)
+                          .stream())
+            
+            executions = []
+            for doc in active_docs:
+                data = doc.to_dict()
+                execution = TestExecution(
+                    execution_id=doc.id,
+                    config_name=data.get('config_name', ''),
+                    status=data.get('status', ''),
+                    start_time=data.get('start_time'),
+                    end_time=data.get('end_time'),
+                    total_tests=data.get('total_tests', 0),
+                    completed_tests=data.get('completed_tests', 0),
+                    failed_tests=data.get('failed_tests', 0),
+                    results_file=data.get('results_file'),
+                    error_message=data.get('error_message'),
+                    created_at=data.get('created_at'),
+                    workflow_execution_name=data.get('workflow_execution_name'),
+                    parallel_workers=data.get('parallel_workers', 1),
+                    workflow_progress=data.get('workflow_progress')
+                )
+                executions.append(execution)
+            
+            return executions
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to get active workflow executions: {e}")
+            return [] 

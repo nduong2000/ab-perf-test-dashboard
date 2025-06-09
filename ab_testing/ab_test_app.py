@@ -495,6 +495,319 @@ def api_cloud_task_execute_test():
         logger.error(f"Error in Cloud Task execution: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+# Cloud Workflows Webhook Endpoints
+
+@app.route('/api/workflows/log', methods=['POST'])
+def api_workflow_log():
+    """Cloud Workflows endpoint for logging workflow events."""
+    try:
+        if not test_manager:
+            return jsonify({"error": "Test manager not initialized"}), 500
+        
+        data = request.json
+        execution_id = data.get('execution_id')
+        event = data.get('event')
+        timestamp = data.get('timestamp')
+        
+        logger.info(f"🔄 Workflow Event [{execution_id}]: {event} at {timestamp}")
+        
+        # Log additional details based on event type
+        if event == "batch_started":
+            worker_index = data.get('worker_index')
+            batch_size = data.get('batch_size')
+            logger.info(f"📊 Worker {worker_index} starting batch of {batch_size} tests")
+        elif event == "batch_completed":
+            worker_index = data.get('worker_index')
+            batch_result = data.get('batch_result', {})
+            logger.info(f"✅ Worker {worker_index} completed batch: {batch_result.get('tests_completed', 0)} tests")
+        
+        return jsonify({"status": "success"})
+        
+    except Exception as e:
+        logger.error(f"Error logging workflow event: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/workflows/prepare', methods=['POST'])
+def api_workflow_prepare():
+    """Cloud Workflows endpoint for preparing test execution."""
+    try:
+        if not test_manager:
+            return jsonify({"error": "Test manager not initialized"}), 500
+        
+        data = request.json
+        execution_id = data.get('execution_id')
+        config_name = data.get('config_name')
+        parallel_workers = data.get('parallel_workers', 2)
+        
+        logger.info(f"🔄 Preparing workflow execution: {execution_id} with {parallel_workers} workers")
+        
+        # Load configuration
+        config_data = test_manager.load_configuration(config_name)
+        
+        # Create test batches for parallel execution
+        from .workflows_manager import CloudWorkflowsManager
+        workflows_manager = CloudWorkflowsManager()
+        test_batches = workflows_manager.create_test_batches(config_data, parallel_workers)
+        
+        if not test_batches:
+            return jsonify({
+                "success": False,
+                "error": "Failed to create test batches"
+            }), 400
+        
+        # Update execution status
+        test_manager._update_execution_status(execution_id, "running")
+        
+        return jsonify({
+            "success": True,
+            "test_batches": test_batches,
+            "total_batches": len(test_batches),
+            "config_data": config_data
+        })
+        
+    except Exception as e:
+        logger.error(f"Error preparing workflow execution: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/api/workflows/execute-batch', methods=['POST'])
+def api_workflow_execute_batch():
+    """Cloud Workflows endpoint for executing a test batch."""
+    try:
+        if not test_manager:
+            return jsonify({"error": "Test manager not initialized"}), 500
+        
+        data = request.json
+        execution_id = data.get('execution_id')
+        worker_index = data.get('worker_index')
+        test_batch = data.get('test_batch')
+        
+        batch_id = test_batch.get('batch_id')
+        tests = test_batch.get('tests', [])
+        
+        logger.info(f"🔄 Worker {worker_index} executing batch {batch_id} with {len(tests)} tests")
+        
+        # Execute tests in this batch
+        from .decorators import ABTestRunner
+        runner = ABTestRunner(base_url=test_manager.base_url)
+        
+        batch_results = []
+        tests_completed = 0
+        tests_failed = 0
+        start_time = datetime.now()
+        
+        for test_config in tests:
+            try:
+                result = runner.run_single_test(
+                    model=test_config['model'],
+                    user_type=test_config['user_type'],
+                    think_mode=test_config['think_mode'],
+                    question=test_config['question']
+                )
+                batch_results.append(result)
+                
+                if result.success:
+                    tests_completed += 1
+                else:
+                    tests_failed += 1
+                    
+                # Add delay between tests
+                import time
+                time.sleep(test_config.get('delay_between_tests', 2))
+                
+            except Exception as e:
+                logger.error(f"❌ Test failed in batch {batch_id}: {e}")
+                tests_failed += 1
+        
+        end_time = datetime.now()
+        duration = (end_time - start_time).total_seconds()
+        
+        # Store batch results in Firestore
+        if hasattr(test_manager, 'firestore_manager') and test_manager.firestore_manager:
+            test_manager._store_result_summary(execution_id, batch_results)
+        
+        logger.info(f"✅ Worker {worker_index} completed batch {batch_id}: {tests_completed}/{len(tests)} successful")
+        
+        return jsonify({
+            "success": True,
+            "tests_completed": tests_completed,
+            "tests_failed": tests_failed,
+            "total_tests": len(tests),
+            "duration": duration,
+            "batch_id": batch_id,
+            "worker_index": worker_index
+        })
+        
+    except Exception as e:
+        logger.error(f"Error executing workflow batch: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/api/workflows/aggregate', methods=['POST'])
+def api_workflow_aggregate():
+    """Cloud Workflows endpoint for aggregating parallel results."""
+    try:
+        if not test_manager:
+            return jsonify({"error": "Test manager not initialized"}), 500
+        
+        data = request.json
+        execution_id = data.get('execution_id')
+        parallel_results = data.get('parallel_results', [])
+        
+        logger.info(f"🔄 Aggregating results for execution: {execution_id}")
+        
+        # Calculate totals across all workers
+        total_tests_completed = sum(result.get('tests_completed', 0) for result in parallel_results)
+        total_tests_failed = sum(result.get('tests_failed', 0) for result in parallel_results)
+        total_tests = sum(result.get('total_tests', 0) for result in parallel_results)
+        
+        logger.info(f"📊 Aggregated results: {total_tests_completed}/{total_tests} successful, {total_tests_failed} failed")
+        
+        return jsonify({
+            "success": True,
+            "total_tests": total_tests,
+            "tests_completed": total_tests_completed,
+            "tests_failed": total_tests_failed,
+            "parallel_workers": len(parallel_results),
+            "aggregation_time": datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error aggregating workflow results: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/api/workflows/finalize', methods=['POST'])
+def api_workflow_finalize():
+    """Cloud Workflows endpoint for finalizing test execution."""
+    try:
+        if not test_manager:
+            return jsonify({"error": "Test manager not initialized"}), 500
+        
+        data = request.json
+        execution_id = data.get('execution_id')
+        final_status = data.get('final_status', 'completed')
+        error_message = data.get('error_message')
+        
+        logger.info(f"🔄 Finalizing execution: {execution_id} with status: {final_status}")
+        
+        # Update execution status in database
+        if final_status == "completed":
+            test_manager._update_execution_status(execution_id, "completed")
+        else:
+            test_manager._update_execution_status(execution_id, "failed", error_message)
+        
+        # Update end time if using Firestore
+        if hasattr(test_manager, 'firestore_manager') and test_manager.firestore_manager:
+            execution = test_manager.firestore_manager.get_execution(execution_id)
+            if execution:
+                execution.end_time = datetime.now().isoformat()
+                execution.status = final_status
+                if error_message:
+                    execution.error_message = error_message
+                test_manager.firestore_manager.save_execution(execution)
+        
+        logger.info(f"✅ Execution {execution_id} finalized with status: {final_status}")
+        
+        return jsonify({
+            "success": True,
+            "execution_id": execution_id,
+            "final_status": final_status
+        })
+        
+    except Exception as e:
+        logger.error(f"Error finalizing workflow execution: {str(e)}")
+        return jsonify({
+            "success": False,
+            "error": str(e)
+        }), 500
+
+@app.route('/api/workflows/status/<execution_id>', methods=['GET'])
+def api_workflow_status(execution_id):
+    """Get workflow execution status."""
+    try:
+        if not test_manager:
+            return jsonify({"error": "Test manager not initialized"}), 500
+        
+        # Get execution from database
+        execution = test_manager.get_test_status(execution_id)
+        if not execution:
+            return jsonify({"error": "Execution not found"}), 404
+        
+        # Get workflow status if using Cloud Workflows
+        workflow_status = None
+        if hasattr(test_manager, 'workflows_manager') and execution.error_message and "Cloud Workflow:" in execution.error_message:
+            workflow_execution_name = execution.error_message.replace("Cloud Workflow: ", "")
+            workflow_status = test_manager.workflows_manager.get_execution_status(workflow_execution_name)
+        
+        # Get workflow events if using Firestore
+        workflow_events = []
+        if hasattr(test_manager, 'firestore_manager'):
+            workflow_events = test_manager.firestore_manager.get_workflow_events(execution_id, limit=10)
+        
+        return jsonify({
+            "execution": {
+                "execution_id": execution.execution_id,
+                "config_name": execution.config_name,
+                "status": execution.status,
+                "start_time": execution.start_time,
+                "end_time": execution.end_time,
+                "total_tests": execution.total_tests,
+                "completed_tests": execution.completed_tests,
+                "failed_tests": execution.failed_tests,
+                "error_message": execution.error_message
+            },
+            "workflow_status": workflow_status,
+            "workflow_events": workflow_events
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting workflow status: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/workflows/cancel/<execution_id>', methods=['POST'])
+def api_workflow_cancel(execution_id):
+    """Cancel a running workflow execution."""
+    try:
+        if not test_manager:
+            return jsonify({"error": "Test manager not initialized"}), 500
+        
+        # Get execution from database
+        execution = test_manager.get_test_status(execution_id)
+        if not execution:
+            return jsonify({"error": "Execution not found"}), 404
+        
+        cancelled = False
+        
+        # Try to cancel workflow if it exists
+        if hasattr(test_manager, 'workflows_manager') and execution.error_message and "Cloud Workflow:" in execution.error_message:
+            workflow_execution_name = execution.error_message.replace("Cloud Workflow: ", "")
+            cancelled = test_manager.workflows_manager.cancel_execution(workflow_execution_name)
+            
+            if cancelled:
+                test_manager._update_execution_status(execution_id, "stopped", "Cancelled by user")
+                logger.info(f"🛑 Cancelled workflow execution: {execution_id}")
+        
+        # Fallback to regular stop method
+        if not cancelled:
+            cancelled = test_manager.stop_test(execution_id)
+        
+        return jsonify({
+            "success": cancelled,
+            "message": "Workflow cancelled successfully" if cancelled else "Failed to cancel workflow",
+            "execution_id": execution_id
+        })
+        
+    except Exception as e:
+        logger.error(f"Error cancelling workflow: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/tasks/cleanup', methods=['POST'])
 def api_cloud_task_cleanup():
     """Cloud Tasks webhook endpoint for cleanup operations."""
