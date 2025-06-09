@@ -32,6 +32,8 @@ class TestExecution:
     workflow_execution_name: Optional[str] = None
     parallel_workers: int = 1
     workflow_progress: Optional[Dict] = None
+    # Firestore tracking fields
+    updated_at: Optional[str] = None
 
 @dataclass
 class TestResultSummary:
@@ -83,7 +85,9 @@ class FirestoreManager:
             doc = self.executions_ref.document(execution_id).get()
             if doc.exists:
                 data = doc.to_dict()
-                return TestExecution(**data)
+                # Filter data to only include fields that exist in TestExecution dataclass
+                filtered_data = self._filter_execution_data(data)
+                return TestExecution(**filtered_data)
             return None
             
         except Exception as e:
@@ -95,6 +99,7 @@ class FirestoreManager:
         try:
             update_data = {
                 'status': status,
+                'updated_at': datetime.utcnow().isoformat(),
                 'end_time': datetime.utcnow().isoformat() if status in ['completed', 'failed', 'stopped'] else None
             }
             
@@ -119,7 +124,9 @@ class FirestoreManager:
             executions = []
             for doc in docs:
                 data = doc.to_dict()
-                executions.append(TestExecution(**data))
+                # Filter data to only include fields that exist in TestExecution dataclass
+                filtered_data = self._filter_execution_data(data)
+                executions.append(TestExecution(**filtered_data))
             
             return executions
             
@@ -258,6 +265,21 @@ class FirestoreManager:
         except Exception as e:
             logger.error(f"❌ Failed to cleanup old executions: {e}")
             return 0
+    
+    def _filter_execution_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Filter Firestore data to only include fields that exist in TestExecution dataclass."""
+        # Get the field names from TestExecution dataclass
+        from dataclasses import fields
+        valid_fields = {field.name for field in fields(TestExecution)}
+        
+        # Filter the data to only include valid fields
+        filtered_data = {key: value for key, value in data.items() if key in valid_fields}
+        
+        # Ensure required fields have default values if missing
+        if 'execution_id' not in filtered_data and 'id' in data:
+            filtered_data['execution_id'] = data['id']
+        
+        return filtered_data
     
     def update_workflow_progress(self, execution_id: str, workflow_progress: Dict[str, Any]):
         """Update workflow progress for an execution."""

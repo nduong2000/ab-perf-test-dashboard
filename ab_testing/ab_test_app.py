@@ -908,10 +908,12 @@ def api_download_results(execution_id):
 # Error handlers
 @app.errorhandler(404)
 def not_found_error(error):
+    logger.warning(f"404 error: {error}")
     return jsonify({"error": "Resource not found"}), 404
 
 @app.errorhandler(500)
 def internal_error(error):
+    logger.error(f"500 error: {error}")
     return jsonify({"error": "Internal server error"}), 500
 
 # Health check endpoint
