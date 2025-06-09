@@ -806,8 +806,36 @@ class ABTestManager:
             results_filename = f"results_{execution_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
             results_path = self.results_dir / results_filename
             
-            # Create test runner
-            runner = ABTestRunner(base_url=self.base_url, results_file=str(results_path))
+            # Create progress callback function
+            def progress_callback(completed_tests, failed_tests, total_tests):
+                """Update execution progress in database."""
+                try:
+                    if USE_FIRESTORE:
+                        execution = self.firestore_manager.get_execution(execution_id)
+                        if execution:
+                            execution.completed_tests = completed_tests
+                            execution.failed_tests = failed_tests
+                            execution.total_tests = total_tests
+                            self.firestore_manager.save_execution(execution)
+                    else:
+                        with sqlite3.connect(self.database_path) as conn:
+                            conn.execute("""
+                                UPDATE test_executions 
+                                SET completed_tests = ?, failed_tests = ?, total_tests = ?
+                                WHERE execution_id = ?
+                            """, (completed_tests, failed_tests, total_tests, execution_id))
+                            conn.commit()
+                    
+                    logger.debug(f"📊 Progress update: {completed_tests}/{total_tests} tests completed")
+                except Exception as e:
+                    logger.error(f"❌ Failed to update progress: {e}")
+            
+            # Create test runner with progress callback
+            runner = ABTestRunner(
+                base_url=self.base_url, 
+                results_file=str(results_path),
+                progress_callback=progress_callback
+            )
             
             with self.lock:
                 self.active_runners[execution_id] = runner

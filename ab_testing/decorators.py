@@ -49,12 +49,13 @@ class TestConfiguration:
 class ABTestRunner:
     """Core A/B test runner with decorator support."""
     
-    def __init__(self, base_url: str = "https://aetraggraph-529012124872.us-central1.run.app", results_file: str = None):
+    def __init__(self, base_url: str = "https://aetraggraph-529012124872.us-central1.run.app", results_file: str = None, progress_callback=None):
         self.base_url = base_url
         self.results_file = results_file or f"ab_test_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
         self.results: List[TestResult] = []
         self.is_running = False
         self.lock = threading.Lock()
+        self.progress_callback = progress_callback
         
     def _make_request(self, model: str, user_type: str, think_mode: bool, question: str) -> Tuple[Dict, float]:
         """Make a request to the chat API."""
@@ -165,6 +166,7 @@ class ABTestRunner:
         logger.info(f"📊 Running {len(combinations)} test combinations")
         
         suite_results = []
+        total_tests = len(combinations) * config.iterations
         
         for i, combo in enumerate(combinations, 1):
             if not self.is_running:
@@ -181,6 +183,15 @@ class ABTestRunner:
                     logger.info(f"   ✅ Test {i}.{iteration + 1} completed in {result.response_time:.2f}s")
                 else:
                     logger.error(f"   ❌ Test {i}.{iteration + 1} failed: {result.error}")
+                
+                # Call progress callback if provided
+                if self.progress_callback:
+                    completed_tests = len(suite_results)
+                    failed_tests = len([r for r in suite_results if not r.success])
+                    try:
+                        self.progress_callback(completed_tests, failed_tests, total_tests)
+                    except Exception as e:
+                        logger.error(f"❌ Progress callback error: {e}")
                 
                 # Delay between tests
                 if i < len(combinations) or iteration < config.iterations - 1:
