@@ -447,14 +447,24 @@
             
             let html = '<div class="results-content">';
             
-            // Render analysis if available
-            if (currentAnalysis) {
-                html += renderAnalysis(currentAnalysis);
-            }
-            
-            // Render raw results if available
+            // Always render raw results first (primary display)
             if (currentResults) {
                 html += renderRawResults(currentResults);
+            }
+            
+            // Render analysis as additional information if available
+            if (currentAnalysis) {
+                html += renderAnalysis(currentAnalysis);
+            } else if (currentResults) {
+                // Show a note that analysis is not available but results are
+                html += `
+                    <div class="results-card">
+                        <h3>📊 Advanced Analysis</h3>
+                        <p style="color: var(--light-text); font-style: italic;">
+                            Advanced analysis is not available for this execution, but detailed results are shown above.
+                        </p>
+                    </div>
+                `;
             }
             
             html += '</div>';
@@ -462,22 +472,33 @@
         }
         
         function renderAnalysis(analysis) {
+            // Calculate success rate percentage
+            const successRatePercent = (analysis.success_rate || analysis.overall_success_rate || 0) * 100;
+            
             let html = `
                 <div class="results-card">
-                    <h3>📊 Test Analysis Summary</h3>
+                    <h3>📊 Advanced Test Analysis</h3>
                     
                     <div class="summary-stats">
                         <div class="stat-card">
-                            <div class="stat-value">${analysis.total_tests}</div>
+                            <div class="stat-value">${analysis.total_tests || 0}</div>
                             <div class="stat-label">Total Tests</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-value">${analysis.successful_tests}</div>
+                            <div class="stat-value">${analysis.successful_tests || 0}</div>
                             <div class="stat-label">Successful</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-value">${(analysis.success_rate || 0).toFixed(1)}%</div>
+                            <div class="stat-value">${analysis.failed_tests || 0}</div>
+                            <div class="stat-label">Failed</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${successRatePercent.toFixed(1)}%</div>
                             <div class="stat-label">Success Rate</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${(analysis.average_response_time || 0).toFixed(2)}s</div>
+                            <div class="stat-label">Avg Response Time</div>
                         </div>
                     </div>
             `;
@@ -510,6 +531,7 @@
                                         ${stats.min !== undefined ? `<div><strong>Min:</strong> ${stats.min.toFixed(2)}s</div>` : ''}
                                         ${stats.max !== undefined ? `<div><strong>Max:</strong> ${stats.max.toFixed(2)}s</div>` : ''}
                                         <div><strong>Tests:</strong> ${stats.count || 0}</div>
+                                        ${stats.success_rate !== undefined ? `<div><strong>Success Rate:</strong> ${(stats.success_rate * 100).toFixed(1)}%</div>` : ''}
                                     </div>
                                 </div>
                             `).join('')}
@@ -530,6 +552,7 @@
                                     <div class="model-stats">
                                         <div><strong>Avg Response Time:</strong> ${(stats.avg || 0).toFixed(2)}s</div>
                                         <div><strong>Tests:</strong> ${stats.count || 0}</div>
+                                        ${stats.success_rate !== undefined ? `<div><strong>Success Rate:</strong> ${(stats.success_rate * 100).toFixed(1)}%</div>` : ''}
                                     </div>
                                 </div>
                             `).join('')}
@@ -550,6 +573,7 @@
                                     <div class="model-stats">
                                         <div><strong>Avg Response Time:</strong> ${(stats.avg || 0).toFixed(2)}s</div>
                                         <div><strong>Tests:</strong> ${stats.count || 0}</div>
+                                        ${stats.success_rate !== undefined ? `<div><strong>Success Rate:</strong> ${(stats.success_rate * 100).toFixed(1)}%</div>` : ''}
                                     </div>
                                 </div>
                             `).join('')}
@@ -562,31 +586,71 @@
         }
         
         function renderRawResults(results) {
-            const testRunInfo = results.test_run_info || {};
+            const summary = results.summary || {};
             const testResults = results.results || [];
+            
+            // Calculate success statistics from actual results
+            let totalTests = testResults.length;
+            let successfulTests = 0;
+            let failedTests = 0;
+            
+            testResults.forEach(result => {
+                if (result.success === true) {
+                    successfulTests++;
+                } else {
+                    failedTests++;
+                }
+            });
+            
+            const overallSuccessRate = summary.overall_success_rate || (totalTests > 0 ? successfulTests / totalTests : 0);
             
             return `
                 <div class="results-card">
-                    <h3>📋 Raw Test Results</h3>
+                    <h3>📋 Test Results Summary</h3>
                     
                     <div class="summary-stats">
                         <div class="stat-card">
-                            <div class="stat-value">${testRunInfo.total_tests || 0}</div>
-                            <div class="stat-label">Total Tests</div>
+                            <div class="stat-value">${totalTests}</div>
+                            <div class="stat-label">Total Combinations</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-value">${testRunInfo.successful_tests || 0}</div>
+                            <div class="stat-value">${successfulTests}</div>
                             <div class="stat-label">Successful</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-value">${testRunInfo.failed_tests || 0}</div>
+                            <div class="stat-value">${failedTests}</div>
                             <div class="stat-label">Failed</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${(overallSuccessRate * 100).toFixed(1)}%</div>
+                            <div class="stat-label">Success Rate</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">${(summary.avg_response_time || 0).toFixed(2)}s</div>
+                            <div class="stat-label">Avg Response Time</div>
+                        </div>
+                    </div>
+                    
+                    <div class="results-card" style="margin-top: 20px;">
+                        <h4>📊 Model Performance Breakdown</h4>
+                        <div class="model-comparison">
+                            ${testResults.map(result => `
+                                <div class="model-card">
+                                    <div class="model-name">${result.model} (${result.user_type})</div>
+                                    <div class="model-stats">
+                                        <div><strong>Success Rate:</strong> ${(result.success_rate * 100).toFixed(1)}%</div>
+                                        <div><strong>Avg Response Time:</strong> ${result.avg_response_time.toFixed(2)}s</div>
+                                        <div><strong>Total Tests:</strong> ${result.total_tests}</div>
+                                        <div><strong>Status:</strong> <span style="color: ${result.success ? 'var(--success-color)' : 'var(--danger-color)'};">${result.success ? '✅ Success' : '❌ Failed'}</span></div>
+                                    </div>
+                                </div>
+                            `).join('')}
                         </div>
                     </div>
                     
                     <div class="raw-data">
-                        <h4>Sample Test Results (First 5):</h4>
-                        <pre>${JSON.stringify(testResults.slice(0, 5), null, 2)}</pre>
+                        <h4>Raw Data (First 3 Results):</h4>
+                        <pre>${JSON.stringify(testResults.slice(0, 3), null, 2)}</pre>
                     </div>
                     
                     <div style="margin-top: 15px;">
