@@ -356,7 +356,7 @@
                 
                 // Filter for completed executions
                 completedExecutions = (data.executions || []).filter(exec => 
-                    exec.status === 'completed' && exec.results_file
+                    exec.status === 'completed'
                 );
                 
                 updateExecutionSelect();
@@ -476,7 +476,7 @@
                             <div class="stat-label">Successful</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-value">${analysis.success_rate.toFixed(1)}%</div>
+                            <div class="stat-value">${(analysis.success_rate || 0).toFixed(1)}%</div>
                             <div class="stat-label">Success Rate</div>
                         </div>
                     </div>
@@ -506,10 +506,10 @@
                                 <div class="model-card">
                                     <div class="model-name">${model}</div>
                                     <div class="model-stats">
-                                        <div><strong>Avg Response Time:</strong> ${stats.avg.toFixed(2)}s</div>
-                                        <div><strong>Min:</strong> ${stats.min.toFixed(2)}s</div>
-                                        <div><strong>Max:</strong> ${stats.max.toFixed(2)}s</div>
-                                        <div><strong>Tests:</strong> ${stats.count}</div>
+                                        <div><strong>Avg Response Time:</strong> ${(stats.avg || 0).toFixed(2)}s</div>
+                                        ${stats.min !== undefined ? `<div><strong>Min:</strong> ${stats.min.toFixed(2)}s</div>` : ''}
+                                        ${stats.max !== undefined ? `<div><strong>Max:</strong> ${stats.max.toFixed(2)}s</div>` : ''}
+                                        <div><strong>Tests:</strong> ${stats.count || 0}</div>
                                     </div>
                                 </div>
                             `).join('')}
@@ -528,8 +528,8 @@
                                 <div class="model-card">
                                     <div class="model-name">${userType}</div>
                                     <div class="model-stats">
-                                        <div><strong>Avg Response Time:</strong> ${stats.avg.toFixed(2)}s</div>
-                                        <div><strong>Tests:</strong> ${stats.count}</div>
+                                        <div><strong>Avg Response Time:</strong> ${(stats.avg || 0).toFixed(2)}s</div>
+                                        <div><strong>Tests:</strong> ${stats.count || 0}</div>
                                     </div>
                                 </div>
                             `).join('')}
@@ -548,8 +548,8 @@
                                 <div class="model-card">
                                     <div class="model-name">Think Mode ${thinkMode}</div>
                                     <div class="model-stats">
-                                        <div><strong>Avg Response Time:</strong> ${stats.avg.toFixed(2)}s</div>
-                                        <div><strong>Tests:</strong> ${stats.count}</div>
+                                        <div><strong>Avg Response Time:</strong> ${(stats.avg || 0).toFixed(2)}s</div>
+                                        <div><strong>Tests:</strong> ${stats.count || 0}</div>
                                     </div>
                                 </div>
                             `).join('')}
