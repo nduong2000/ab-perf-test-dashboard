@@ -305,13 +305,34 @@ class CloudWorkflowsManager:
             questions = config_data.get("questions", [])
             iterations = config_data.get("iterations", 1)
             
+            # Optimize for large test configurations to prevent timeouts
+            questions_per_test = config_data.get("questions_per_test", len(questions))
+            delay_between_questions = config_data.get("delay_between_questions", 5)
+            
+            # Cap questions per test to prevent timeouts (max 15 minutes per worker)
+            # Each question takes ~5-8 seconds + delay, so limit to prevent > 25 minute batches
+            max_questions_per_batch = 20
+            if questions_per_test > max_questions_per_batch:
+                logger.warning(f"⚠️ Limiting questions per test from {questions_per_test} to {max_questions_per_batch} to prevent timeouts")
+                questions_per_test = max_questions_per_batch
+            
+            # Reduce delay for large test suites
+            if len(questions) * len(models) * len(user_types) > 30:
+                delay_between_questions = min(delay_between_questions, 2)
+                logger.info(f"📊 Reduced delay to {delay_between_questions}s for large test suite")
+            
             # For comprehensive tests, sample questions per combination
             if config_data.get("test_type") == "comprehensive":
                 questions_per_combo = config_data.get("questions_per_combination", 3)
                 import random
                 selected_questions = random.sample(questions, min(questions_per_combo, len(questions)))
             else:
-                selected_questions = questions
+                # Limit questions for category-specific tests to prevent timeouts
+                if config_data.get("test_type") == "category_specific":
+                    # Use first N questions up to the limit
+                    selected_questions = questions[:min(questions_per_test, len(questions))]
+                else:
+                    selected_questions = questions
             
             # Generate all combinations
             combinations = []
@@ -330,9 +351,20 @@ class CloudWorkflowsManager:
                                     "think_mode": think_mode,
                                     "question": question,
                                     "iteration": iteration,
-                                    "delay_between_tests": config_data.get("delay_between_questions", 5),
+                                    "delay_between_tests": delay_between_questions,
                                     "timeout": 60.0
                                 })
+            
+            # Increase workers for very large test suites
+            estimated_time_per_test = 8 + delay_between_questions  # seconds
+            total_estimated_time = len(combinations) * estimated_time_per_test
+            max_batch_time = 20 * 60  # 20 minutes max per batch
+            
+            if total_estimated_time / parallel_workers > max_batch_time:
+                optimal_workers = math.ceil(total_estimated_time / max_batch_time)
+                if optimal_workers > parallel_workers:
+                    parallel_workers = min(optimal_workers, 6)  # Cap at 6 workers
+                    logger.info(f"📊 Increased workers to {parallel_workers} to prevent timeouts")
             
             # Split combinations into batches
             batch_size = math.ceil(len(combinations) / parallel_workers)
@@ -351,7 +383,12 @@ class CloudWorkflowsManager:
                     }
                     batches.append(batch)
             
-            logger.info(f"📊 Created {len(batches)} test batches with ~{batch_size} tests each")
+            total_tests = len(combinations)
+            avg_batch_size = total_tests / len(batches) if batches else 0
+            estimated_duration = (avg_batch_size * estimated_time_per_test) / 60  # minutes
+            
+            logger.info(f"📊 Created {len(batches)} test batches with ~{avg_batch_size:.1f} tests each")
+            logger.info(f"⏱️ Estimated duration per batch: ~{estimated_duration:.1f} minutes")
             
             return batches
             

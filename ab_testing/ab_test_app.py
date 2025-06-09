@@ -691,6 +691,20 @@ def api_workflow_execute_batch():
                     else:
                         tests_failed += 1
                         logger.warning(f"⚠️ Test failed: {result.error}")
+                    
+                    # Report progress every 5 tests or on last test
+                    if (i + 1) % 5 == 0 or i == len(tests) - 1:
+                        # Update execution progress in database
+                        if hasattr(test_manager, '_update_execution_progress'):
+                            test_manager._update_execution_progress(
+                                execution_id, 
+                                tests_completed, 
+                                tests_failed, 
+                                worker_index,
+                                i + 1,
+                                len(tests)
+                            )
+                        logger.info(f"📊 Worker {worker_index} progress: {i+1}/{len(tests)} tests ({tests_completed} completed, {tests_failed} failed)")
                         
                     # Add delay between tests
                     import time

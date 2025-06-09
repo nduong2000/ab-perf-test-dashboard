@@ -986,6 +986,44 @@ class ABTestManager:
         
         logger.info(f"📊 Updated execution stats for {execution_id}: {completed_tests}/{total_tests} completed, {failed_tests} failed")
     
+    def _update_execution_progress(self, execution_id: str, completed_tests: int, failed_tests: int, 
+                                 worker_index: int = None, batch_progress: int = None, batch_total: int = None):
+        """Update execution progress in real-time during batch execution."""
+        try:
+            if USE_FIRESTORE:
+                execution = self.firestore_manager.get_execution(execution_id)
+                if execution:
+                    # Update the running totals
+                    execution.completed_tests = max(execution.completed_tests, completed_tests)
+                    execution.failed_tests = max(execution.failed_tests, failed_tests)
+                    
+                    # Update worker progress tracking
+                    if not execution.workflow_progress:
+                        execution.workflow_progress = {}
+                    
+                    if worker_index is not None:
+                        execution.workflow_progress[f"worker_{worker_index}"] = {
+                            "completed": completed_tests,
+                            "failed": failed_tests,
+                            "batch_progress": batch_progress,
+                            "batch_total": batch_total,
+                            "last_update": datetime.now().isoformat()
+                        }
+                    
+                    self.firestore_manager.save_execution(execution)
+            else:
+                # For SQLite, just update the main stats
+                with sqlite3.connect(self.database_path) as conn:
+                    conn.execute("""
+                        UPDATE test_executions 
+                        SET completed_tests = ?, failed_tests = ? 
+                        WHERE execution_id = ?
+                    """, (completed_tests, failed_tests, execution_id))
+                    conn.commit()
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to update execution progress: {e}")
+    
     def _store_result_summary(self, execution_id: str, results: List[TestResult]):
         """Store summary statistics in database."""
         if USE_FIRESTORE:
