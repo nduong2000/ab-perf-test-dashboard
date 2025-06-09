@@ -2,7 +2,7 @@
 
 This guide walks you through deploying the A/B Testing Dashboard to Google Cloud Run with persistent Firestore storage.
 
-## 🚀 Quick Deployment
+## 🚀 Quick Deployment.
 
 ### Prerequisites
 - Google Cloud SDK installed and configured
