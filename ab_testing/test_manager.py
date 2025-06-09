@@ -258,19 +258,67 @@ class ABTestManager:
     
     def stop_test(self, execution_id: str) -> bool:
         """Stop a running test execution."""
-        with self.lock:
-            if execution_id in self.active_runners:
-                runner = self.active_runners[execution_id]
-                runner.stop_test_suite()
-                
-                # Update status
-                self._update_execution_status(execution_id, "stopped")
-                
-                logger.info(f"🛑 Stopped test execution: {execution_id}")
-                return True
-            else:
-                logger.warning(f"⚠️ Test execution not found or not running: {execution_id}")
+        try:
+            # First check if execution exists
+            execution = self.get_test_status(execution_id)
+            if not execution:
+                logger.warning(f"⚠️ Test execution not found: {execution_id}")
                 return False
+            
+            # Check if execution is actually running
+            if execution.status != "running":
+                logger.warning(f"⚠️ Test execution is not running (status: {execution.status}): {execution_id}")
+                return False
+            
+            stopped = False
+            
+            # Try to stop local active runner first
+            with self.lock:
+                if execution_id in self.active_runners:
+                    runner = self.active_runners[execution_id]
+                    runner.stop_test_suite()
+                    del self.active_runners[execution_id]
+                    stopped = True
+                    logger.info(f"🛑 Stopped local test runner: {execution_id}")
+                
+                # Cancel future if it exists
+                if execution_id in self.active_executions:
+                    future = self.active_executions[execution_id]
+                    future.cancel()
+                    del self.active_executions[execution_id]
+                    stopped = True
+                    logger.info(f"🛑 Cancelled test future: {execution_id}")
+            
+            # If not found locally, check if it's a Cloud Task
+            if not stopped and USE_CLOUD_TASKS and hasattr(self, 'cloud_tasks_manager'):
+                try:
+                    # List tasks to find the one matching this execution
+                    tasks = self.cloud_tasks_manager.list_tasks(page_size=100)
+                    
+                    for task in tasks:
+                        task_name = task.get('name', '')
+                        if f"ab-test-{execution_id}" in task_name:
+                            # Cancel the Cloud Task
+                            if self.cloud_tasks_manager.cancel_task(task_name):
+                                stopped = True
+                                logger.info(f"🛑 Cancelled Cloud Task: {task_name}")
+                            break
+                
+                except Exception as e:
+                    logger.error(f"❌ Error cancelling Cloud Task: {e}")
+            
+            # Update status in database regardless of whether we found the active runner
+            if stopped or execution.status == "running":
+                self._update_execution_status(execution_id, "stopped")
+                logger.info(f"🛑 Updated execution status to stopped: {execution_id}")
+                return True
+            
+            logger.warning(f"⚠️ Could not stop test execution: {execution_id}")
+            return False
+            
+        except Exception as e:
+            logger.error(f"❌ Error stopping execution {execution_id}: {e}")
+            return False
     
     def delete_execution(self, execution_id: str) -> bool:
         """Delete a pending or failed test execution."""
