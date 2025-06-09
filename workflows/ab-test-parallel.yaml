@@ -148,7 +148,7 @@ execute_test_batch:
             execution_id: ${execution_id}
             worker_index: ${worker_index}
             test_batch: ${test_batch}
-          timeout: 2700  # 45 minutes
+          timeout: 1800  # 30 minutes (max allowed)
         result: batch_execution_result
         
     - return_batch_result:
