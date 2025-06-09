@@ -159,4 +159,3 @@ execute_test_batch:
           tests_completed: ${batch_execution_result.body.tests_completed}
           tests_failed: ${batch_execution_result.body.tests_failed}
           duration: ${batch_execution_result.body.duration}
-          error: ${default(batch_execution_result.body.error, null)}
