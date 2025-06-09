@@ -366,20 +366,54 @@ class ABTestManager:
         """Get detailed test results for an execution."""
         execution = self.get_test_status(execution_id)
         
-        if not execution or not execution.results_file:
+        if not execution:
             return None
         
-        results_path = self.results_dir / execution.results_file
-        
-        if not results_path.exists():
-            return None
-        
-        try:
-            with open(results_path, 'r') as f:
-                return json.load(f)
-        except Exception as e:
-            logger.error(f"Error loading results: {e}")
-            return None
+        if USE_FIRESTORE:
+            # For Firestore, get result summaries instead of raw results
+            summaries = self.firestore_manager.get_result_summaries(execution_id)
+            if not summaries:
+                return None
+            
+            # Convert summaries to results format for compatibility
+            results = []
+            for summary in summaries:
+                results.append({
+                    "execution_id": summary.execution_id,
+                    "model": summary.model,
+                    "user_type": summary.user_type,
+                    "think_mode": summary.think_mode,
+                    "avg_response_time": summary.avg_response_time,
+                    "success_rate": summary.success_rate,
+                    "total_tests": summary.total_tests,
+                    "success": summary.success_rate > 0
+                })
+            
+            return {
+                "execution_id": execution_id,
+                "results": results,
+                "summary": {
+                    "total_summaries": len(summaries),
+                    "avg_response_time": sum(s.avg_response_time for s in summaries) / len(summaries) if summaries else 0,
+                    "overall_success_rate": sum(s.success_rate for s in summaries) / len(summaries) if summaries else 0
+                }
+            }
+        else:
+            # Original file-based approach for SQLite
+            if not execution.results_file:
+                return None
+            
+            results_path = self.results_dir / execution.results_file
+            
+            if not results_path.exists():
+                return None
+            
+            try:
+                with open(results_path, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                logger.error(f"Error loading results: {e}")
+                return None
     
     def analyze_test_results(self, execution_id: str) -> Optional[Dict[str, Any]]:
         """Analyze test results and provide insights."""
@@ -393,60 +427,121 @@ class ABTestManager:
         if not results:
             return {"error": "No test results found"}
         
-        # Group results by different dimensions
-        by_model = {}
-        by_user_type = {}
-        by_think_mode = {}
-        
-        successful_results = [r for r in results if r.get("success", False)]
-        
-        for result in successful_results:
-            model = result.get("model", "unknown")
-            user_type = result.get("user_type", "unknown")
-            think_mode = result.get("think_mode", False)
-            response_time = result.get("response_time", 0)
+        if USE_FIRESTORE:
+            # For Firestore, results are already aggregated summaries
+            by_model = {}
+            by_user_type = {}
+            by_think_mode = {}
             
-            # Group by model
-            if model not in by_model:
-                by_model[model] = {"times": [], "count": 0}
-            by_model[model]["times"].append(response_time)
-            by_model[model]["count"] += 1
+            total_tests = 0
+            successful_tests = 0
             
-            # Group by user type
-            if user_type not in by_user_type:
-                by_user_type[user_type] = {"times": [], "count": 0}
-            by_user_type[user_type]["times"].append(response_time)
-            by_user_type[user_type]["count"] += 1
+            for result in results:
+                model = result.get("model", "unknown")
+                user_type = result.get("user_type", "unknown")
+                think_mode = result.get("think_mode", False)
+                avg_response_time = result.get("avg_response_time", 0)
+                success_rate = result.get("success_rate", 0)
+                test_count = result.get("total_tests", 0)
+                
+                total_tests += test_count
+                successful_tests += int(test_count * success_rate / 100) if success_rate > 0 else 0
+                
+                # Group by model (use avg time and count for aggregated data)
+                if model not in by_model:
+                    by_model[model] = {"avg": avg_response_time, "count": test_count}
+                else:
+                    # Weighted average for multiple entries of same model
+                    existing_total = by_model[model]["avg"] * by_model[model]["count"]
+                    new_total = avg_response_time * test_count
+                    by_model[model]["count"] += test_count
+                    by_model[model]["avg"] = (existing_total + new_total) / by_model[model]["count"]
+                
+                # Group by user type
+                if user_type not in by_user_type:
+                    by_user_type[user_type] = {"avg": avg_response_time, "count": test_count}
+                else:
+                    existing_total = by_user_type[user_type]["avg"] * by_user_type[user_type]["count"]
+                    new_total = avg_response_time * test_count
+                    by_user_type[user_type]["count"] += test_count
+                    by_user_type[user_type]["avg"] = (existing_total + new_total) / by_user_type[user_type]["count"]
+                
+                # Group by think mode
+                think_key = "enabled" if think_mode else "disabled"
+                if think_key not in by_think_mode:
+                    by_think_mode[think_key] = {"avg": avg_response_time, "count": test_count}
+                else:
+                    existing_total = by_think_mode[think_key]["avg"] * by_think_mode[think_key]["count"]
+                    new_total = avg_response_time * test_count
+                    by_think_mode[think_key]["count"] += test_count
+                    by_think_mode[think_key]["avg"] = (existing_total + new_total) / by_think_mode[think_key]["count"]
             
-            # Group by think mode
-            think_key = "enabled" if think_mode else "disabled"
-            if think_key not in by_think_mode:
-                by_think_mode[think_key] = {"times": [], "count": 0}
-            by_think_mode[think_key]["times"].append(response_time)
-            by_think_mode[think_key]["count"] += 1
-        
-        # Calculate statistics
-        def calc_stats(data):
-            if not data["times"]:
-                return {"avg": 0, "min": 0, "max": 0, "count": 0}
-            times = data["times"]
-            return {
-                "avg": sum(times) / len(times),
-                "min": min(times),
-                "max": max(times),
-                "count": len(times)
+            analysis = {
+                "execution_id": execution_id,
+                "total_tests": total_tests,
+                "successful_tests": successful_tests,
+                "success_rate": (successful_tests / total_tests * 100) if total_tests > 0 else 0,
+                "by_model": by_model,
+                "by_user_type": by_user_type,
+                "by_think_mode": by_think_mode,
+                "recommendations": self._generate_firestore_recommendations(by_model, by_user_type, by_think_mode)
             }
-        
-        analysis = {
-            "execution_id": execution_id,
-            "total_tests": len(results),
-            "successful_tests": len(successful_results),
-            "success_rate": len(successful_results) / len(results) * 100 if results else 0,
-            "by_model": {model: calc_stats(data) for model, data in by_model.items()},
-            "by_user_type": {ut: calc_stats(data) for ut, data in by_user_type.items()},
-            "by_think_mode": {tm: calc_stats(data) for tm, data in by_think_mode.items()},
-            "recommendations": self._generate_recommendations(by_model, by_user_type, by_think_mode)
-        }
+            
+        else:
+            # Original analysis for file-based results
+            by_model = {}
+            by_user_type = {}
+            by_think_mode = {}
+            
+            successful_results = [r for r in results if r.get("success", False)]
+            
+            for result in successful_results:
+                model = result.get("model", "unknown")
+                user_type = result.get("user_type", "unknown")
+                think_mode = result.get("think_mode", False)
+                response_time = result.get("response_time", 0)
+                
+                # Group by model
+                if model not in by_model:
+                    by_model[model] = {"times": [], "count": 0}
+                by_model[model]["times"].append(response_time)
+                by_model[model]["count"] += 1
+                
+                # Group by user type
+                if user_type not in by_user_type:
+                    by_user_type[user_type] = {"times": [], "count": 0}
+                by_user_type[user_type]["times"].append(response_time)
+                by_user_type[user_type]["count"] += 1
+                
+                # Group by think mode
+                think_key = "enabled" if think_mode else "disabled"
+                if think_key not in by_think_mode:
+                    by_think_mode[think_key] = {"times": [], "count": 0}
+                by_think_mode[think_key]["times"].append(response_time)
+                by_think_mode[think_key]["count"] += 1
+            
+            # Calculate statistics
+            def calc_stats(data):
+                if not data["times"]:
+                    return {"avg": 0, "min": 0, "max": 0, "count": 0}
+                times = data["times"]
+                return {
+                    "avg": sum(times) / len(times),
+                    "min": min(times),
+                    "max": max(times),
+                    "count": len(times)
+                }
+            
+            analysis = {
+                "execution_id": execution_id,
+                "total_tests": len(results),
+                "successful_tests": len(successful_results),
+                "success_rate": len(successful_results) / len(results) * 100 if results else 0,
+                "by_model": {model: calc_stats(data) for model, data in by_model.items()},
+                "by_user_type": {ut: calc_stats(data) for ut, data in by_user_type.items()},
+                "by_think_mode": {tm: calc_stats(data) for tm, data in by_think_mode.items()},
+                "recommendations": self._generate_recommendations(by_model, by_user_type, by_think_mode)
+            }
         
         return analysis
     
@@ -476,6 +571,37 @@ class ABTestManager:
                     recommendations.append(f"🧠 Think mode shows better performance (avg: {enabled_avg:.2f}s vs {disabled_avg:.2f}s)")
                 else:
                     recommendations.append(f"⚡ Regular mode is faster (avg: {disabled_avg:.2f}s vs {enabled_avg:.2f}s)")
+        
+        return recommendations
+    
+    def _generate_firestore_recommendations(self, by_model, by_user_type, by_think_mode) -> List[str]:
+        """Generate recommendations based on Firestore aggregated results."""
+        recommendations = []
+        
+        # Find best performing model
+        if by_model:
+            best_model = min(by_model.items(), key=lambda x: x[1]["avg"])
+            recommendations.append(f"🏆 Best performing model: {best_model[0]} (avg: {best_model[1]['avg']:.2f}s)")
+        
+        # Compare user types
+        if len(by_user_type) > 1:
+            best_user_type = min(by_user_type.items(), key=lambda x: x[1]["avg"])
+            recommendations.append(f"👤 Fastest user type: {best_user_type[0]} (avg: {best_user_type[1]['avg']:.2f}s)")
+        
+        # Think mode analysis
+        if len(by_think_mode) > 1:
+            enabled_data = by_think_mode.get("enabled", {})
+            disabled_data = by_think_mode.get("disabled", {})
+            
+            if enabled_data and disabled_data:
+                enabled_avg = enabled_data.get("avg", 0)
+                disabled_avg = disabled_data.get("avg", 0)
+                
+                if enabled_avg > 0 and disabled_avg > 0:
+                    if enabled_avg < disabled_avg:
+                        recommendations.append(f"🧠 Think mode shows better performance (avg: {enabled_avg:.2f}s vs {disabled_avg:.2f}s)")
+                    else:
+                        recommendations.append(f"⚡ Regular mode is faster (avg: {disabled_avg:.2f}s vs {enabled_avg:.2f}s)")
         
         return recommendations
     
