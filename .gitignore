@@ -194,3 +194,4 @@ cython_debug/
 .cursorindexingignore
 ab_testing/.DS_Store
 env_template
+github-actions-key.json
