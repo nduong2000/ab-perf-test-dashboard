@@ -92,6 +92,11 @@ def results():
     """Results analysis page."""
     return render_template('ab_test_results.html')
 
+@app.route('/architecture')
+def architecture():
+    """System architecture page."""
+    return render_template('ab_test_architecture.html')
+
 # API Endpoints
 
 @app.route('/api/status')
