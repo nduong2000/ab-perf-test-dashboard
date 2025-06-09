@@ -34,17 +34,12 @@ jobs:
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Enable required APIs
-        run: |-
-          gcloud services enable artifactregistry.googleapis.com
-          gcloud services enable run.googleapis.com
-
-      - name: Create Artifact Registry Repository
+      - name: Create Artifact Registry Repository (if needed)
         run: |-
           gcloud artifacts repositories create ${{ env.SERVICE }} \
             --repository-format=docker \
             --location=${{ env.GAR_LOCATION }} \
-            --description="Docker repository for ${{ env.SERVICE }}" || true
+            --description="Docker repository for ${{ env.SERVICE }}" 2>/dev/null || echo "Repository already exists"
 
       - name: Configure Docker to use gcloud as credential helper
         run: |-
