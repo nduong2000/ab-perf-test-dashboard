@@ -535,25 +535,71 @@ def api_workflow_prepare():
             return jsonify({"error": "Test manager not initialized"}), 500
         
         data = request.json
+        if not data:
+            return jsonify({
+                "success": False,
+                "error": "No data provided"
+            }), 400
+            
         execution_id = data.get('execution_id')
         config_name = data.get('config_name')
         parallel_workers = data.get('parallel_workers', 2)
         
-        logger.info(f"🔄 Preparing workflow execution: {execution_id} with {parallel_workers} workers")
-        
-        # Load configuration
-        config_data = test_manager.load_configuration(config_name)
-        
-        # Create test batches for parallel execution
-        from .workflows_manager import CloudWorkflowsManager
-        workflows_manager = CloudWorkflowsManager()
-        test_batches = workflows_manager.create_test_batches(config_data, parallel_workers)
-        
-        if not test_batches:
+        if not execution_id:
             return jsonify({
                 "success": False,
-                "error": "Failed to create test batches"
+                "error": "execution_id is required"
             }), 400
+            
+        if not config_name:
+            return jsonify({
+                "success": False,
+                "error": "config_name is required"
+            }), 400
+        
+        logger.info(f"🔄 Preparing workflow execution: {execution_id} with {parallel_workers} workers")
+        logger.info(f"📋 Configuration: {config_name}")
+        
+        # Load configuration
+        try:
+            config_data = test_manager.load_configuration(config_name)
+            logger.info(f"✅ Loaded configuration: {config_data.get('name', config_name)}")
+        except FileNotFoundError:
+            error_msg = f"Configuration file not found: {config_name}"
+            logger.error(f"❌ {error_msg}")
+            return jsonify({
+                "success": False,
+                "error": error_msg
+            }), 404
+        except Exception as e:
+            error_msg = f"Failed to load configuration: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            return jsonify({
+                "success": False,
+                "error": error_msg
+            }), 400
+        
+        # Create test batches for parallel execution
+        try:
+            from .workflows_manager import CloudWorkflowsManager
+            workflows_manager = CloudWorkflowsManager()
+            test_batches = workflows_manager.create_test_batches(config_data, parallel_workers)
+            
+            if not test_batches:
+                return jsonify({
+                    "success": False,
+                    "error": "Failed to create test batches - configuration may be invalid"
+                }), 400
+                
+            logger.info(f"📊 Created {len(test_batches)} test batches")
+            
+        except Exception as e:
+            error_msg = f"Failed to create test batches: {str(e)}"
+            logger.error(f"❌ {error_msg}")
+            return jsonify({
+                "success": False,
+                "error": error_msg
+            }), 500
         
         # Update execution status
         test_manager._update_execution_status(execution_id, "running")
@@ -566,7 +612,8 @@ def api_workflow_prepare():
         })
         
     except Exception as e:
-        logger.error(f"Error preparing workflow execution: {str(e)}")
+        logger.error(f"❌ Error preparing workflow execution: {str(e)}")
+        logger.error(f"❌ Request data: {request.json}")
         return jsonify({
             "success": False,
             "error": str(e)
@@ -580,68 +627,112 @@ def api_workflow_execute_batch():
             return jsonify({"error": "Test manager not initialized"}), 500
         
         data = request.json
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+            
         execution_id = data.get('execution_id')
         worker_index = data.get('worker_index')
         test_batch = data.get('test_batch')
         
-        batch_id = test_batch.get('batch_id')
+        if not execution_id:
+            return jsonify({"error": "execution_id is required"}), 400
+        if worker_index is None:
+            return jsonify({"error": "worker_index is required"}), 400
+        if not test_batch:
+            return jsonify({"error": "test_batch is required"}), 400
+        
+        batch_id = test_batch.get('batch_id', f"batch_{worker_index}")
         tests = test_batch.get('tests', [])
+        
+        if not tests:
+            logger.warning(f"⚠️ Worker {worker_index} received empty test batch {batch_id}")
+            return jsonify({
+                "success": True,
+                "tests_completed": 0,
+                "tests_failed": 0,
+                "total_tests": 0,
+                "duration": 0,
+                "batch_id": batch_id,
+                "worker_index": worker_index
+            })
         
         logger.info(f"🔄 Worker {worker_index} executing batch {batch_id} with {len(tests)} tests")
         
         # Execute tests in this batch
-        from .decorators import ABTestRunner
-        runner = ABTestRunner(base_url=test_manager.base_url)
-        
-        batch_results = []
-        tests_completed = 0
-        tests_failed = 0
-        start_time = datetime.now()
-        
-        for test_config in tests:
-            try:
-                result = runner.run_single_test(
-                    model=test_config['model'],
-                    user_type=test_config['user_type'],
-                    think_mode=test_config['think_mode'],
-                    question=test_config['question']
-                )
-                batch_results.append(result)
-                
-                if result.success:
-                    tests_completed += 1
-                else:
-                    tests_failed += 1
+        try:
+            from .decorators import ABTestRunner
+            runner = ABTestRunner(base_url=test_manager.base_url)
+            
+            batch_results = []
+            tests_completed = 0
+            tests_failed = 0
+            start_time = datetime.now()
+            
+            for i, test_config in enumerate(tests):
+                try:
+                    logger.debug(f"🔄 Worker {worker_index} executing test {i+1}/{len(tests)}")
                     
-                # Add delay between tests
-                import time
-                time.sleep(test_config.get('delay_between_tests', 2))
-                
-            except Exception as e:
-                logger.error(f"❌ Test failed in batch {batch_id}: {e}")
-                tests_failed += 1
-        
-        end_time = datetime.now()
-        duration = (end_time - start_time).total_seconds()
-        
-        # Store batch results in Firestore
-        if hasattr(test_manager, 'firestore_manager') and test_manager.firestore_manager:
-            test_manager._store_result_summary(execution_id, batch_results)
-        
-        logger.info(f"✅ Worker {worker_index} completed batch {batch_id}: {tests_completed}/{len(tests)} successful")
-        
-        return jsonify({
-            "success": True,
-            "tests_completed": tests_completed,
-            "tests_failed": tests_failed,
-            "total_tests": len(tests),
-            "duration": duration,
-            "batch_id": batch_id,
-            "worker_index": worker_index
-        })
+                    # Validate test configuration
+                    required_fields = ['model', 'user_type', 'think_mode', 'question']
+                    for field in required_fields:
+                        if field not in test_config:
+                            raise ValueError(f"Missing required field: {field}")
+                    
+                    result = runner.run_single_test(
+                        model=test_config['model'],
+                        user_type=test_config['user_type'],
+                        think_mode=test_config['think_mode'],
+                        question=test_config['question']
+                    )
+                    batch_results.append(result)
+                    
+                    if result.success:
+                        tests_completed += 1
+                    else:
+                        tests_failed += 1
+                        logger.warning(f"⚠️ Test failed: {result.error}")
+                        
+                    # Add delay between tests
+                    import time
+                    delay = test_config.get('delay_between_tests', 2)
+                    if delay > 0:
+                        time.sleep(delay)
+                    
+                except Exception as e:
+                    logger.error(f"❌ Test {i+1} failed in batch {batch_id}: {e}")
+                    tests_failed += 1
+            
+            end_time = datetime.now()
+            duration = (end_time - start_time).total_seconds()
+            
+            # Store batch results in Firestore
+            if hasattr(test_manager, 'firestore_manager') and test_manager.firestore_manager:
+                test_manager._store_result_summary(execution_id, batch_results)
+            
+            logger.info(f"✅ Worker {worker_index} completed batch {batch_id}: {tests_completed}/{len(tests)} successful in {duration:.1f}s")
+            
+            return jsonify({
+                "success": True,
+                "tests_completed": tests_completed,
+                "tests_failed": tests_failed,
+                "total_tests": len(tests),
+                "duration": duration,
+                "batch_id": batch_id,
+                "worker_index": worker_index
+            })
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to execute batch {batch_id}: {e}")
+            return jsonify({
+                "success": False,
+                "error": f"Batch execution failed: {str(e)}",
+                "batch_id": batch_id,
+                "worker_index": worker_index
+            }), 500
         
     except Exception as e:
-        logger.error(f"Error executing workflow batch: {str(e)}")
+        logger.error(f"❌ Error executing workflow batch: {str(e)}")
+        logger.error(f"❌ Request data: {request.json}")
         return jsonify({
             "success": False,
             "error": str(e)
@@ -655,29 +746,81 @@ def api_workflow_aggregate():
             return jsonify({"error": "Test manager not initialized"}), 500
         
         data = request.json
+        if not data:
+            return jsonify({"error": "No data provided"}), 400
+            
         execution_id = data.get('execution_id')
+        if not execution_id:
+            return jsonify({"error": "execution_id is required"}), 400
+            
         parallel_results = data.get('parallel_results', [])
         
         logger.info(f"🔄 Aggregating results for execution: {execution_id}")
+        logger.info(f"📊 Received {len(parallel_results)} parallel worker results")
         
-        # Calculate totals across all workers
-        total_tests_completed = sum(result.get('tests_completed', 0) for result in parallel_results)
-        total_tests_failed = sum(result.get('tests_failed', 0) for result in parallel_results)
-        total_tests = sum(result.get('total_tests', 0) for result in parallel_results)
+        # If no parallel_results provided, try to get from database/Firestore
+        if not parallel_results:
+            logger.info("📊 No parallel_results provided, getting from database")
+            execution = test_manager.get_test_status(execution_id)
+            if execution:
+                # Use the current stats from the execution record
+                total_tests = execution.total_tests
+                total_tests_completed = execution.completed_tests
+                total_tests_failed = execution.failed_tests
+                parallel_workers = 1  # Default if not tracked
+                
+                logger.info(f"📊 Retrieved from database: {total_tests_completed}/{total_tests} successful, {total_tests_failed} failed")
+            else:
+                logger.warning(f"⚠️ No execution found for {execution_id}")
+                total_tests = 0
+                total_tests_completed = 0
+                total_tests_failed = 0
+                parallel_workers = 0
+        else:
+            # Validate parallel results structure
+            if not isinstance(parallel_results, list):
+                logger.error(f"❌ parallel_results must be a list, got: {type(parallel_results)}")
+                return jsonify({"error": "parallel_results must be a list"}), 400
+            
+            # Calculate totals across all workers
+            total_tests_completed = 0
+            total_tests_failed = 0
+            total_tests = 0
+            
+            for i, result in enumerate(parallel_results):
+                if not isinstance(result, dict):
+                    logger.warning(f"⚠️ Worker {i} result is not a dict: {type(result)}")
+                    continue
+                    
+                tests_completed = result.get('tests_completed', 0)
+                tests_failed = result.get('tests_failed', 0)
+                tests_total = result.get('total_tests', 0)
+                
+                logger.info(f"📊 Worker {i}: {tests_completed}/{tests_total} successful, {tests_failed} failed")
+                
+                total_tests_completed += tests_completed
+                total_tests_failed += tests_failed
+                total_tests += tests_total
+            
+            parallel_workers = len(parallel_results)
+            logger.info(f"📊 Aggregated results: {total_tests_completed}/{total_tests} successful, {total_tests_failed} failed")
         
-        logger.info(f"📊 Aggregated results: {total_tests_completed}/{total_tests} successful, {total_tests_failed} failed")
+        # Update execution status in database
+        if hasattr(test_manager, '_update_execution_stats'):
+            test_manager._update_execution_stats(execution_id, total_tests, total_tests_completed, total_tests_failed)
         
         return jsonify({
             "success": True,
             "total_tests": total_tests,
             "tests_completed": total_tests_completed,
             "tests_failed": total_tests_failed,
-            "parallel_workers": len(parallel_results),
+            "parallel_workers": parallel_workers,
             "aggregation_time": datetime.now().isoformat()
         })
         
     except Exception as e:
-        logger.error(f"Error aggregating workflow results: {str(e)}")
+        logger.error(f"❌ Error aggregating workflow results: {str(e)}")
+        logger.error(f"❌ Request data: {request.json}")
         return jsonify({
             "success": False,
             "error": str(e)
@@ -697,9 +840,37 @@ def api_workflow_finalize():
         
         logger.info(f"🔄 Finalizing execution: {execution_id} with status: {final_status}")
         
-        # Update execution status in database
+        # If completing successfully, calculate actual test counts from results
         if final_status == "completed":
-            test_manager._update_execution_status(execution_id, "completed")
+            try:
+                # Get actual test results to calculate proper counts
+                results = test_manager.get_test_results(execution_id)
+                if results and 'results' in results:
+                    total_completed = 0
+                    total_failed = 0
+                    total_tests = 0
+                    
+                    for result in results['results']:
+                        tests_in_combo = result.get('total_tests', 0)
+                        success_rate = result.get('success_rate', 0)
+                        
+                        completed_in_combo = int(tests_in_combo * success_rate)
+                        failed_in_combo = tests_in_combo - completed_in_combo
+                        
+                        total_completed += completed_in_combo
+                        total_failed += failed_in_combo
+                        total_tests += tests_in_combo
+                    
+                    logger.info(f"📊 Calculated from results: {total_completed}/{total_tests} completed, {total_failed} failed")
+                    
+                    # Update execution statistics
+                    if hasattr(test_manager, '_update_execution_stats'):
+                        test_manager._update_execution_stats(execution_id, total_tests, total_completed, total_failed)
+                
+                test_manager._update_execution_status(execution_id, "completed")
+            except Exception as calc_error:
+                logger.error(f"Error calculating test counts: {calc_error}")
+                test_manager._update_execution_status(execution_id, "completed")
         else:
             test_manager._update_execution_status(execution_id, "failed", error_message)
         
@@ -886,63 +1057,35 @@ def api_download_results(execution_id):
             return jsonify({"error": "Test manager not initialized"}), 500
         
         execution = test_manager.get_test_status(execution_id)
-        
         if not execution or not execution.results_file:
-            abort(404)
+            return jsonify({"error": "Results file not found"}), 404
         
-        results_path = Path(config.results_dir) / execution.results_file
-        
+        results_path = test_manager.results_dir / execution.results_file
         if not results_path.exists():
-            abort(404)
+            return jsonify({"error": "Results file not found on disk"}), 404
         
-        return send_file(
-            results_path,
-            as_attachment=True,
-            download_name=f"ab_test_results_{execution_id}.json"
-        )
+        return send_file(results_path, as_attachment=True)
         
     except Exception as e:
         logger.error(f"Error downloading results: {str(e)}")
-        abort(500)
+        return jsonify({"error": str(e)}), 500
 
-# Error handlers
 @app.errorhandler(404)
 def not_found_error(error):
-    logger.warning(f"404 error: {error}")
-    return jsonify({"error": "Resource not found"}), 404
+    return jsonify({"error": "Not found"}), 404
 
 @app.errorhandler(500)
 def internal_error(error):
-    logger.error(f"500 error: {error}")
     return jsonify({"error": "Internal server error"}), 500
 
-# Health check endpoint
 @app.route('/health')
 def health_check():
     """Health check endpoint."""
     return jsonify({
         "status": "healthy",
-        "test_manager_ready": test_manager is not None,
-        "main_app_url": config.main_app_url,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now().isoformat(),
+        "service": "ab-test-dashboard"
     })
 
 if __name__ == '__main__':
-    logger.info("🚀 Starting A/B Testing Flask Application...")
-    logger.info(f"📊 Port: {config.port}")
-    logger.info(f"🔗 Main App URL: {config.main_app_url}")
-    logger.info(f"💾 Database: {config.database_path}")
-    logger.info(f"📁 Config Dir: {config.config_dir}")
-    logger.info(f"📈 Results Dir: {config.results_dir}")
-    
-    logger.info(f"🌐 Access A/B Testing Dashboard at: http://localhost:{config.port}")
-    logger.info(f"📋 Configuration Management: http://localhost:{config.port}/configurations")
-    logger.info(f"🏃 Test Executions: http://localhost:{config.port}/executions")
-    logger.info(f"📊 Results Analysis: http://localhost:{config.port}/results")
-    
-    app.run(
-        host='0.0.0.0',
-        port=config.port,
-        debug=config.debug,
-        threaded=True
-    ) 
+    app.run(host='0.0.0.0', port=config.port, debug=config.debug) 

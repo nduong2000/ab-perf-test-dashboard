@@ -966,6 +966,26 @@ class ABTestManager:
                     """, (status, execution_id))
                 conn.commit()
     
+    def _update_execution_stats(self, execution_id: str, total_tests: int, completed_tests: int, failed_tests: int):
+        """Update execution statistics in database."""
+        if USE_FIRESTORE:
+            execution = self.firestore_manager.get_execution(execution_id)
+            if execution:
+                execution.total_tests = total_tests
+                execution.completed_tests = completed_tests
+                execution.failed_tests = failed_tests
+                self.firestore_manager.save_execution(execution)
+        else:
+            with sqlite3.connect(self.database_path) as conn:
+                conn.execute("""
+                    UPDATE test_executions 
+                    SET total_tests = ?, completed_tests = ?, failed_tests = ? 
+                    WHERE execution_id = ?
+                """, (total_tests, completed_tests, failed_tests, execution_id))
+                conn.commit()
+        
+        logger.info(f"📊 Updated execution stats for {execution_id}: {completed_tests}/{total_tests} completed, {failed_tests} failed")
+    
     def _store_result_summary(self, execution_id: str, results: List[TestResult]):
         """Store summary statistics in database."""
         if USE_FIRESTORE:

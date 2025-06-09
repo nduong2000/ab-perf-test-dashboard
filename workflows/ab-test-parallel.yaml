@@ -121,6 +121,25 @@ main:
           execution_id: ${execution_id}
           error: ${test_preparation.body.error}
 
+    - handle_execution_error:
+        call: http.post
+        args:
+          url: ${service_url + "/api/workflows/finalize"}
+          headers:
+            Content-Type: "application/json"
+          body:
+            execution_id: ${execution_id}
+            final_status: "failed"
+            error_message: "Parallel execution failed - no results returned"
+        result: error_finalization
+        next: return_execution_error
+        
+    - return_execution_error:
+        return:
+          success: false
+          execution_id: ${execution_id}
+          error: "Parallel execution failed - no results returned"
+
 # Subworkflow for executing a single test batch
 execute_test_batch:
   params: [execution_id, service_url, worker_index, test_batch]

@@ -12,7 +12,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application files
 COPY ab_testing/ ./ab_testing/
 COPY app.py .
-COPY .env* ./
 
 # Create necessary directories
 RUN mkdir -p ab_testing/results ab_testing/configs

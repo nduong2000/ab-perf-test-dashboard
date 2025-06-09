@@ -405,7 +405,8 @@
                     <div style="margin: 10px 0; font-size: 0.9rem; color: var(--light-text);">
                         <div>Started: ${startTime}</div>
                         ${execution.end_time ? `<div>Ended: ${endTime}</div>` : ''}
-                        ${execution.error_message ? `<div style="color: var(--danger-color);">Error: ${execution.error_message}</div>` : ''}
+                        ${execution.error_message && !execution.error_message.startsWith("Cloud Workflow:") ? `<div style="color: var(--danger-color);">Error: ${execution.error_message}</div>` : ''}
+                        ${execution.error_message && execution.error_message.startsWith("Cloud Workflow:") ? `<div style="color: var(--primary-color); font-size: 0.8rem;">🔗 ${execution.error_message.replace("Cloud Workflow: ", "Workflow: ")}</div>` : ''}
                     </div>
                     
                     <div class="execution-actions">
@@ -492,7 +493,8 @@
                         <p><strong>Status:</strong> ${execution.status}</p>
                         <p><strong>Started:</strong> ${execution.start_time ? new Date(execution.start_time).toLocaleString() : 'Not started'}</p>
                         <p><strong>Progress:</strong> ${execution.completed_tests}/${execution.total_tests} tests</p>
-                        ${execution.error_message ? `<p><strong>Error:</strong> ${execution.error_message}</p>` : ''}
+                        ${execution.error_message && !execution.error_message.startsWith("Cloud Workflow:") ? `<p><strong>Error:</strong> ${execution.error_message}</p>` : ''}
+                        ${execution.error_message && execution.error_message.startsWith("Cloud Workflow:") ? `<p><strong>Workflow:</strong> ${execution.error_message.replace("Cloud Workflow: ", "")}</p>` : ''}
                     </div>
                 `;
                 
