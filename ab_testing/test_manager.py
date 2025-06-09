@@ -272,6 +272,80 @@ class ABTestManager:
                 logger.warning(f"⚠️ Test execution not found or not running: {execution_id}")
                 return False
     
+    def delete_execution(self, execution_id: str) -> bool:
+        """Delete a pending or failed test execution."""
+        try:
+            # First check if execution exists and its status
+            execution = self.get_test_status(execution_id)
+            if not execution:
+                logger.warning(f"⚠️ Test execution not found: {execution_id}")
+                return False
+            
+            # Only allow deletion of pending, failed, or stopped executions
+            if execution.status in ['running']:
+                logger.warning(f"⚠️ Cannot delete running test execution: {execution_id}")
+                return False
+            
+            # Stop if it's somehow still active locally
+            with self.lock:
+                if execution_id in self.active_runners:
+                    runner = self.active_runners[execution_id]
+                    runner.stop_test_suite()
+                    del self.active_runners[execution_id]
+                
+                if execution_id in self.active_executions:
+                    future = self.active_executions[execution_id]
+                    future.cancel()
+                    del self.active_executions[execution_id]
+            
+            # Delete from storage
+            if USE_FIRESTORE:
+                # Delete from Firestore
+                try:
+                    # Delete execution document
+                    self.firestore_manager.executions_ref.document(execution_id).delete()
+                    
+                    # Delete associated result summaries
+                    result_docs = (self.firestore_manager.results_ref
+                                  .where('execution_id', '==', execution_id)
+                                  .stream())
+                    
+                    batch = self.firestore_manager.db.batch()
+                    for doc in result_docs:
+                        batch.delete(doc.reference)
+                    batch.commit()
+                    
+                    logger.info(f"🗑️ Deleted test execution from Firestore: {execution_id}")
+                    
+                except Exception as e:
+                    logger.error(f"❌ Failed to delete from Firestore: {e}")
+                    return False
+            else:
+                # Delete from SQLite
+                with sqlite3.connect(self.database_path) as conn:
+                    cursor = conn.cursor()
+                    
+                    # Delete result summaries first (foreign key constraint)
+                    cursor.execute("DELETE FROM test_results_summary WHERE execution_id = ?", (execution_id,))
+                    
+                    # Delete execution
+                    cursor.execute("DELETE FROM test_executions WHERE execution_id = ?", (execution_id,))
+                    
+                    # Delete results file if it exists
+                    if execution.results_file:
+                        results_path = self.results_dir / execution.results_file
+                        if results_path.exists():
+                            results_path.unlink()
+                    
+                    conn.commit()
+                    logger.info(f"🗑️ Deleted test execution from SQLite: {execution_id}")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Error deleting execution {execution_id}: {e}")
+            return False
+    
     def get_test_status(self, execution_id: str) -> Optional[TestExecution]:
         """Get the status of a test execution."""
         if USE_FIRESTORE:

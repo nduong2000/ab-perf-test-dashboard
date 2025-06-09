@@ -276,6 +276,24 @@ def api_stop_execution(execution_id):
         logger.error(f"Error stopping execution: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/executions/<execution_id>', methods=['DELETE'])
+def api_delete_execution(execution_id):
+    """Delete a pending or failed test execution."""
+    try:
+        if not test_manager:
+            return jsonify({"error": "Test manager not initialized"}), 500
+        
+        success = test_manager.delete_execution(execution_id)
+        
+        if success:
+            return jsonify({"status": "success", "message": "Test execution deleted"})
+        else:
+            return jsonify({"error": "Test execution not found or cannot be deleted"}), 404
+        
+    except Exception as e:
+        logger.error(f"Error deleting execution: {str(e)}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/executions/<execution_id>/status')
 def api_execution_status(execution_id):
     """Get execution status."""
