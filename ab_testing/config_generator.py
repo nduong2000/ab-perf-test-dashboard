@@ -48,47 +48,47 @@ class ABTestConfigGenerator:
             "What is the graph schema flexibility?"
         ]
         
-        # Models extracted from chat.html
+        # Models available in the AET Graph RAG System v3.0
         self.llm_models = [
             {
-                "id": "gemini-2.5-pro-preview-05-06",
-                "name": "🧠 Gemini 2.5 Pro - Preview (05-06)",
+                "id": "gemini-2.5-pro",
+                "name": "🧠 Gemini 2.5 Pro - Most Advanced Reasoning",
                 "supports_think_mode": True,
                 "category": "advanced"
             },
             {
-                "id": "gemini-2.5-flash-preview-05-20",
-                "name": "🧠 Gemini 2.5 Flash - Preview (05-20)",
+                "id": "gemini-2.5-flash",
+                "name": "⚡ Gemini 2.5 Flash - Best Price-Performance",
                 "supports_think_mode": True,
                 "category": "advanced"
             },
             {
-                "id": "gemini-2.0-flash-exp",
-                "name": "Gemini 2.0 Flash - Experimental",
+                "id": "gemini-2.5-flash-lite",
+                "name": "💰 Gemini 2.5 Flash Lite - Most Cost-Effective",
+                "supports_think_mode": True,
+                "category": "advanced"
+            },
+            {
+                "id": "gemini-2.0-flash",
+                "name": "🚀 Gemini 2.0 Flash - Next Generation",
                 "supports_think_mode": False,
                 "category": "standard"
             },
             {
-                "id": "gemini-2.0-flash-001",
-                "name": "Gemini 2.0 Flash - Next Generation",
-                "supports_think_mode": False,
-                "category": "standard"
-            },
-            {
-                "id": "gemini-2.0-flash-lite-001",
-                "name": "Gemini 2.0 Flash Lite - Cost Efficient",
+                "id": "gemini-2.0-flash-lite",
+                "name": "💸 Gemini 2.0 Flash Lite - Cost Efficient",
                 "supports_think_mode": False,
                 "category": "lite"
             },
             {
-                "id": "gemini-1.5-flash-001",
-                "name": "Gemini 1.5 Flash - Stable",
+                "id": "gemini-1.5-flash",
+                "name": "📦 Gemini 1.5 Flash - Legacy Stable",
                 "supports_think_mode": False,
                 "category": "legacy"
             },
             {
-                "id": "gemini-1.5-pro-001",
-                "name": "Gemini 1.5 Pro - Stable",
+                "id": "gemini-1.5-pro",
+                "name": "🏛️ Gemini 1.5 Pro - Legacy Stable",
                 "supports_think_mode": False,
                 "category": "legacy"
             }
@@ -199,7 +199,7 @@ class ABTestConfigGenerator:
         
         config.update({
             "test_type": "user_type_comparison",
-            "models_to_test": ["gemini-2.0-flash-001"],  # Fixed model for this test
+            "models_to_test": ["gemini-2.0-flash"],  # Fixed model for this test
             "user_types": ["business", "technical"],
             "think_mode": False,
             "questions": random.sample(self.sample_questions, 10),

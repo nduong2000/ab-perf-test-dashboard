@@ -1,0 +1,43 @@
+{
+  "name": "model_comparison",
+  "description": "Compare performance across different LLM models",
+  "created_at": "2025-06-20T15:27:58.204784",
+  "test_duration_minutes": 60,
+  "questions_per_test": 10,
+  "delay_between_questions": 5,
+  "randomize_order": true,
+  "collect_metrics": true,
+  "save_responses": true,
+  "test_type": "model_comparison",
+  "models_to_test": [
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash"
+  ],
+  "user_type": "business",
+  "think_mode": false,
+  "questions": [
+    "How does error handling work?",
+    "Present on Admission Code",
+    "How to identify subrogation Claim?",
+    "How does the system handle older MS Office formats?",
+    "How to identify supplies Claim?",
+    "How to identify supplies, workers comp claims, subrogation claims, and in-house/340b claims?",
+    "Explain Aexcel Designated Provider Specialty",
+    "What are the capitation payment file specifications?",
+    "What is field 15 in the Universal file?",
+    "How to identify Dental Claim?",
+    "What validation methods are used?",
+    "Where can I find provider identification fields?",
+    "How does the graph database enhance document processing?",
+    "Explain the confidence scoring system",
+    "How does iterative extraction work?"
+  ],
+  "metrics": [
+    "response_time",
+    "response_length",
+    "confidence_score",
+    "error_rate"
+  ]
+}

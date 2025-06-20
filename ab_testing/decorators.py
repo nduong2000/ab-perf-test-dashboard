@@ -107,10 +107,9 @@ class ABTestRunner:
     def _supports_think_mode(self, model: str) -> bool:
         """Check if model supports think mode."""
         think_mode_models = [
-            "gemini-2.5-pro-preview-05-06",
-            "gemini-2.5-flash-preview-05-20",
             "gemini-2.5-pro",
-            "gemini-2.5-flash"
+            "gemini-2.5-flash",
+            "gemini-2.5-flash-lite"
         ]
         return any(tm in model for tm in think_mode_models)
     
@@ -294,12 +293,12 @@ def performance_test(iterations: int = 5, models: List[str] = None):
     Decorator for performance testing specific models.
     
     Usage:
-        @performance_test(iterations=10, models=["gemini-2.0-flash-001"])
+        @performance_test(iterations=10, models=["gemini-2.0-flash"])
         def my_function():
             pass
     """
     if models is None:
-        models = ["gemini-2.0-flash-001", "gemini-1.5-flash-001"]
+        models = ["gemini-2.0-flash", "gemini-1.5-flash"]
     
     def decorator(func: Callable) -> Callable:
         @functools.wraps(func)
@@ -341,7 +340,7 @@ def comparative_test(model_a: str, model_b: str, questions: List[str] = None):
     Decorator for comparing two specific models.
     
     Usage:
-        @comparative_test("gemini-2.5-flash-preview-05-20", "gemini-2.0-flash-001")
+        @comparative_test("gemini-2.5-flash", "gemini-2.0-flash")
         def compare_models():
             pass
     """
@@ -390,12 +389,12 @@ def comparative_test(model_a: str, model_b: str, questions: List[str] = None):
     return decorator
 
 # Example usage functions
-@performance_test(iterations=3, models=["gemini-2.0-flash-001"])
+@performance_test(iterations=3, models=["gemini-2.0-flash"])
 def test_system_performance():
     """Test system performance with specific model."""
     return "Performance test completed"
 
-@comparative_test("gemini-2.5-flash-preview-05-20", "gemini-2.0-flash-001")
+@comparative_test("gemini-2.5-flash", "gemini-2.0-flash")
 def compare_gemini_models():
     """Compare Gemini 2.5 vs 2.0 performance."""
     return "Model comparison completed"

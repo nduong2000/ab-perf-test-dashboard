@@ -1,0 +1,68 @@
+{
+  "name": "comprehensive_test",
+  "description": "Test all combinations of models, user types, and think modes",
+  "created_at": "2025-06-20T15:27:58.204839",
+  "test_duration_minutes": 180,
+  "questions_per_test": 10,
+  "delay_between_questions": 5,
+  "randomize_order": true,
+  "collect_metrics": true,
+  "save_responses": true,
+  "test_type": "comprehensive",
+  "models_to_test": [
+    "gemini-2.5-pro",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro"
+  ],
+  "user_types": [
+    "business",
+    "technical"
+  ],
+  "think_mode_options": [
+    true,
+    false
+  ],
+  "questions": [
+    "How to identify Dental Claim?",
+    "How to identify supplies Claim?",
+    "How to identify workers comp Claim?",
+    "How to identify subrogation Claim?",
+    "How to identify in-house/340b Claim?",
+    "How to identify supplies, workers comp claims, subrogation claims, and in-house/340b claims?",
+    "How to identify indemnity Claim?",
+    "What is field 15 in the Universal file?",
+    "Explain External Stop Loss reporting requirements",
+    "What are the capitation payment file specifications?",
+    "Where can I find provider identification fields?",
+    "What is ICD9_DX_CD?",
+    "Present on Admission Code",
+    "Explain Aexcel Designated Provider Specialty",
+    "How does the graph database enhance document processing?",
+    "What are the key features of Graph RAG v3.0?",
+    "How does Neo4j integration improve search results?",
+    "Explain the confidence scoring system",
+    "What types of documents can be processed?",
+    "How does iterative extraction work?",
+    "What is the relationship between entities in the graph?",
+    "How are embedded Excel files handled?",
+    "What validation methods are used?",
+    "How does the system handle older MS Office formats?",
+    "Explain the multi-layer validation process",
+    "What are the performance optimizations?",
+    "How does error handling work?",
+    "What is the graph schema flexibility?"
+  ],
+  "questions_per_combination": 3,
+  "metrics": [
+    "response_time",
+    "response_length",
+    "response_quality",
+    "accuracy",
+    "relevance",
+    "error_rate"
+  ]
+}
